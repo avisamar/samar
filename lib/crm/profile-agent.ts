@@ -17,6 +17,7 @@ import {
   type ProfileUpdateProposal,
   type ProposedFieldUpdate,
   type ProposedNote,
+  type ProposedAdditionalData,
   PROPOSAL_TOOL_NAME,
 } from "./extraction-types";
 
@@ -122,14 +123,24 @@ Current customer: ${customer.fullName || "Unknown"}
 ${getExtractionSchema()}
 
 ## Instructions
-1. Extract ONLY information that is clearly stated or strongly implied in the input
-2. For each extracted field, include a brief quote from the source text
-3. Assign confidence levels:
-   - "high": Directly stated (e.g., "earns 60L per year")
+1. Extract information that matches the profile schema fields above
+2. ALSO extract relevant customer information that does NOT fit the schema fields above
+3. For non-schema data, create descriptive keys in snake_case and human-readable labels
+4. Examples of non-schema data worth capturing:
+   - estimated_net_worth / "Estimated Net Worth"
+   - competitor_advisor / "Current/Previous Advisor"
+   - specific_investment_holdings / "Current Holdings Mentioned"
+   - family_member_details / "Family Member Details"
+   - specific_concerns_verbatim / "Specific Concerns (Verbatim)"
+   - estate_planning_notes / "Estate Planning Notes"
+   - insurance_coverage_notes / "Insurance Coverage Notes"
+5. For each extracted item, include a brief quote from the source text
+6. Assign confidence levels:
+   - "high": Directly stated (e.g., "earns 60L per year", "net worth around 5Cr")
    - "medium": Strongly implied (e.g., "senior position" implies high income)
    - "low": Inferred with uncertainty
-4. Generate a concise note summarizing the key points
-5. Generate relevant tags for the note
+7. Generate a concise note summarizing the key points
+8. Generate relevant tags for the note
 
 ## Input (${source})
 ${content}
@@ -145,11 +156,21 @@ Return a JSON object with:
       "source": "quote from input"
     }
   ],
+  "additionalData": [
+    {
+      "key": "snake_case_key",
+      "label": "Human Readable Label",
+      "value": "extracted value",
+      "confidence": "high|medium|low",
+      "source": "quote from input",
+      "category": "optional category like wealth, family, advisor, etc."
+    }
+  ],
   "noteSummary": "Concise summary of the interaction",
   "noteTags": ["tag1", "tag2"]
 }
 
-Only include fields where you found relevant information. If nothing can be extracted, return empty arrays.`;
+Only include fields/data where you found relevant information. If nothing can be extracted, return empty arrays.`;
 
       console.log("[ProfileAgent] Extraction schema sample:", getExtractionSchema().slice(0, 500));
 
@@ -168,6 +189,14 @@ Only include fields where you found relevant information. If nothing can be extr
           confidence: "high" | "medium" | "low";
           source: string;
         }>;
+        additionalData: Array<{
+          key: string;
+          label: string;
+          value: unknown;
+          confidence: "high" | "medium" | "low";
+          source: string;
+          category?: string;
+        }>;
         noteSummary: string;
         noteTags: string[];
       };
@@ -184,9 +213,14 @@ Only include fields where you found relevant information. If nothing can be extr
         if (jsonMatch) {
           const jsonStr = jsonMatch[1] || jsonMatch[0];
           extraction = JSON.parse(jsonStr);
+          // Ensure additionalData exists (for backwards compatibility)
+          if (!extraction.additionalData) {
+            extraction.additionalData = [];
+          }
         } else {
           extraction = {
             extractedFields: [],
+            additionalData: [],
             noteSummary: content.slice(0, 200),
             noteTags: [],
           };
@@ -195,6 +229,7 @@ Only include fields where you found relevant information. If nothing can be extr
         console.error("[ProfileAgent] Failed to parse extraction response:", e);
         extraction = {
           extractedFields: [],
+          additionalData: [],
           noteSummary: content.slice(0, 200),
           noteTags: [],
         };
@@ -226,6 +261,20 @@ Only include fields where you found relevant information. If nothing can be extr
           };
         });
 
+      // Build additional data items (non-schema data)
+      const additionalData: ProposedAdditionalData[] = (extraction.additionalData || [])
+        .map((ad) => ({
+          id: nanoid(),
+          key: ad.key,
+          label: ad.label,
+          value: ad.value,
+          confidence: ad.confidence,
+          source: ad.source,
+          category: ad.category,
+        }));
+
+      console.log("[ProfileAgent] Additional data items:", additionalData.length);
+
       const note: ProposedNote = {
         id: nanoid(),
         content: extraction.noteSummary || content.slice(0, 200),
@@ -237,6 +286,7 @@ Only include fields where you found relevant information. If nothing can be extr
         proposalId: nanoid(),
         customerId: customer.id,
         fieldUpdates,
+        additionalData,
         note,
         rawInput: content,
         createdAt: new Date().toISOString(),

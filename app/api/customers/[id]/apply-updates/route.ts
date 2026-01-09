@@ -4,6 +4,7 @@ import type {
   ProfileUpdateProposal,
   ApplyUpdatesRequest,
   ApplyUpdatesResponse,
+  AdditionalDataItem,
 } from "@/lib/crm/extraction-types";
 import { validateFieldValue } from "@/lib/crm/field-mapping";
 
@@ -26,8 +27,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const {
       proposalId,
       approvedFieldIds,
+      approvedAdditionalDataIds = [],
       approvedNote,
       editedValues = {},
+      editedAdditionalData = {},
       editedNoteContent,
       proposal,
     } = body;
@@ -55,6 +58,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const errors: string[] = [];
     let fieldsUpdated = 0;
+    let additionalDataAdded = 0;
     let noteCreated = false;
 
     // Apply approved field updates
@@ -99,6 +103,45 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
+    // Apply approved additional data
+    if (approvedAdditionalDataIds.length > 0 && proposal.additionalData) {
+      const newAdditionalData: AdditionalDataItem[] = [];
+
+      for (const dataId of approvedAdditionalDataIds) {
+        const additionalItem = proposal.additionalData.find((d) => d.id === dataId);
+        if (!additionalItem) {
+          errors.push(`Additional data ${dataId} not found in proposal`);
+          continue;
+        }
+
+        // Use edited value if available, otherwise use proposed value
+        const value = editedAdditionalData[dataId] !== undefined
+          ? editedAdditionalData[dataId]
+          : additionalItem.value;
+
+        newAdditionalData.push({
+          key: additionalItem.key,
+          label: additionalItem.label,
+          value,
+          confidence: additionalItem.confidence,
+          source: additionalItem.source,
+          category: additionalItem.category,
+          addedAt: new Date().toISOString(),
+        });
+      }
+
+      if (newAdditionalData.length > 0) {
+        console.log("[ApplyUpdates] Appending additional data:", newAdditionalData.length, "items");
+        const updated = await crmRepository.appendAdditionalData(customerId, newAdditionalData);
+        if (updated) {
+          additionalDataAdded = newAdditionalData.length;
+          console.log("[ApplyUpdates] Additional data added count:", additionalDataAdded);
+        } else {
+          errors.push("Failed to add additional data");
+        }
+      }
+    }
+
     // Create note if approved
     if (approvedNote) {
       const noteContent = editedNoteContent ?? proposal.note.content;
@@ -126,6 +169,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const response: ApplyUpdatesResponse = {
       success: errors.length === 0,
       fieldsUpdated,
+      additionalDataAdded,
       noteCreated,
       errors: errors.length > 0 ? errors : undefined,
     };

@@ -31,6 +31,24 @@ export interface ProposedNote {
   tags: string[];
 }
 
+/** Proposed additional data that doesn't fit the profile schema */
+export interface ProposedAdditionalData {
+  /** Unique identifier for this additional data item */
+  id: string;
+  /** The key/attribute name in snake_case (e.g., "estimated_net_worth") */
+  key: string;
+  /** Human-readable label (e.g., "Estimated Net Worth") */
+  label: string;
+  /** The extracted value */
+  value: unknown;
+  /** Confidence level based on clarity of source text */
+  confidence: "high" | "medium" | "low";
+  /** Quote from the input that led to this extraction */
+  source: string;
+  /** Optional category for grouping similar attributes */
+  category?: string;
+}
+
 export interface ProfileUpdateProposal {
   /** Unique identifier for this proposal batch */
   proposalId: string;
@@ -38,6 +56,8 @@ export interface ProfileUpdateProposal {
   customerId: string;
   /** List of proposed field updates */
   fieldUpdates: ProposedFieldUpdate[];
+  /** List of proposed additional data (non-schema) */
+  additionalData: ProposedAdditionalData[];
   /** Proposed note to attach */
   note: ProposedNote;
   /** Original raw input from the RM */
@@ -52,10 +72,14 @@ export interface ApplyUpdatesRequest {
   proposalId: string;
   /** IDs of field updates that were approved */
   approvedFieldIds: string[];
+  /** IDs of additional data items that were approved */
+  approvedAdditionalDataIds: string[];
   /** Whether the note was approved */
   approvedNote: boolean;
   /** Any edited values (field ID -> new value) */
   editedValues?: Record<string, unknown>;
+  /** Any edited additional data values (data ID -> new value) */
+  editedAdditionalData?: Record<string, unknown>;
   /** Edited note content (if note was edited) */
   editedNoteContent?: string;
 }
@@ -65,10 +89,32 @@ export interface ApplyUpdatesResponse {
   success: boolean;
   /** Number of profile fields updated */
   fieldsUpdated: number;
+  /** Number of additional data items added */
+  additionalDataAdded: number;
   /** Whether a note was created */
   noteCreated: boolean;
   /** Any errors encountered */
   errors?: string[];
+}
+
+/** Stored additional data item (persisted in database) */
+export interface AdditionalDataItem {
+  /** The key/attribute name in snake_case */
+  key: string;
+  /** Human-readable label */
+  label: string;
+  /** The stored value */
+  value: unknown;
+  /** Confidence level when captured */
+  confidence: "high" | "medium" | "low";
+  /** Quote from the source input */
+  source: string;
+  /** Optional category for grouping */
+  category?: string;
+  /** ISO timestamp when this was added */
+  addedAt: string;
+  /** User ID who added this */
+  addedBy?: string;
 }
 
 /** Tool output type marker for UI detection */

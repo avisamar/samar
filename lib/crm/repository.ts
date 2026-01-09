@@ -10,6 +10,7 @@ import type {
   NoteInput,
   CustomerProfileUpdate,
 } from "./types";
+import type { AdditionalDataItem } from "./extraction-types";
 
 // =============================================================================
 // CRM Repository
@@ -202,6 +203,57 @@ export const crmRepository = {
       .returning();
 
     console.log("[Repository] Update result:", result ? "success" : "no result");
+    return result ?? null;
+  },
+
+  /**
+   * Append additional data items to a customer's additionalData JSONB field.
+   * Merges with existing data, updating items with matching keys.
+   */
+  async appendAdditionalData(
+    customerId: string,
+    newData: AdditionalDataItem[]
+  ): Promise<Customer | null> {
+    console.log("[Repository] appendAdditionalData called with:", {
+      customerId,
+      newDataCount: newData.length,
+    });
+
+    if (newData.length === 0) {
+      console.log("[Repository] No additional data to append");
+      return this.getCustomer(customerId);
+    }
+
+    // Get existing customer
+    const existingCustomer = await this.getCustomer(customerId);
+    if (!existingCustomer) {
+      console.log("[Repository] Customer not found");
+      return null;
+    }
+
+    // Get existing additional data (or empty array)
+    const existingData: AdditionalDataItem[] =
+      (existingCustomer.additionalData as AdditionalDataItem[]) || [];
+
+    console.log("[Repository] Existing additional data count:", existingData.length);
+
+    // Merge: update existing keys, append new ones
+    const dataMap = new Map(existingData.map((d) => [d.key, d]));
+    for (const item of newData) {
+      dataMap.set(item.key, item); // Overwrites if key exists
+    }
+
+    const mergedData = Array.from(dataMap.values());
+    console.log("[Repository] Merged additional data count:", mergedData.length);
+
+    // Update the customer
+    const [result] = await db
+      .update(customer)
+      .set({ additionalData: mergedData })
+      .where(eq(customer.id, customerId))
+      .returning();
+
+    console.log("[Repository] Additional data update result:", result ? "success" : "no result");
     return result ?? null;
   },
 };

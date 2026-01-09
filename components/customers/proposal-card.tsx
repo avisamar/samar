@@ -1,18 +1,17 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Check, FileText, Sparkles } from "lucide-react";
+import { Check, FileText, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import type {
   ProfileUpdateProposal,
   ProposedFieldUpdate,
-  ProposedNote,
 } from "@/lib/crm/extraction-types";
-import { FieldUpdateCard } from "./field-update-card";
+import { ConfidenceGroup } from "./confidence-group";
+import { AdditionalDataCard } from "./additional-data-card";
 import { NoteProposalCard } from "./note-proposal-card";
 
 interface ProposalCardProps {
@@ -22,9 +21,27 @@ interface ProposalCardProps {
 }
 
 type FieldStatus = "pending" | "accepted" | "rejected";
+type ConfidenceLevel = "high" | "medium" | "low";
+
+/** Group fields by confidence level */
+function groupByConfidence(
+  fields: ProposedFieldUpdate[]
+): Record<ConfidenceLevel, ProposedFieldUpdate[]> {
+  return {
+    high: fields.filter((f) => f.confidence === "high"),
+    medium: fields.filter((f) => f.confidence === "medium"),
+    low: fields.filter((f) => f.confidence === "low"),
+  };
+}
 
 export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardProps) {
   const router = useRouter();
+
+  // Group fields by confidence
+  const groupedFields = useMemo(
+    () => groupByConfidence(proposal.fieldUpdates),
+    [proposal.fieldUpdates]
+  );
 
   // Track status of each field update
   const [fieldStatuses, setFieldStatuses] = useState<Record<string, FieldStatus>>(
@@ -33,6 +50,14 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
 
   // Track edited values
   const [editedValues, setEditedValues] = useState<Record<string, unknown>>({});
+
+  // Track status of each additional data item
+  const [additionalDataStatuses, setAdditionalDataStatuses] = useState<Record<string, FieldStatus>>(
+    () => Object.fromEntries((proposal.additionalData || []).map((d) => [d.id, "pending" as FieldStatus]))
+  );
+
+  // Track edited additional data values
+  const [editedAdditionalData, setEditedAdditionalData] = useState<Record<string, unknown>>({});
 
   // Track note status
   const [noteStatus, setNoteStatus] = useState<FieldStatus>("pending");
@@ -71,6 +96,25 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
     setNoteStatus("accepted");
   }, []);
 
+  const handleAdditionalDataAction = useCallback((dataId: string, action: "accept" | "reject") => {
+    setAdditionalDataStatuses((prev) => ({
+      ...prev,
+      [dataId]: action === "accept" ? "accepted" : "rejected",
+    }));
+  }, []);
+
+  const handleAdditionalDataEdit = useCallback((dataId: string, value: unknown) => {
+    setEditedAdditionalData((prev) => ({
+      ...prev,
+      [dataId]: value,
+    }));
+    // Auto-accept when edited
+    setAdditionalDataStatuses((prev) => ({
+      ...prev,
+      [dataId]: "accepted",
+    }));
+  }, []);
+
   const handleApply = useCallback(async () => {
     setIsApplying(true);
     setError(null);
@@ -81,11 +125,18 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
         .filter(([, status]) => status === "accepted")
         .map(([id]) => id);
 
+      // Collect approved additional data IDs
+      const approvedAdditionalDataIds = Object.entries(additionalDataStatuses)
+        .filter(([, status]) => status === "accepted")
+        .map(([id]) => id);
+
       console.log("[ProposalCard] Sending apply request:", {
         proposalId: proposal.proposalId,
         approvedFieldIds,
+        approvedAdditionalDataIds,
         approvedNote: noteStatus === "accepted",
         fieldUpdatesCount: proposal.fieldUpdates.length,
+        additionalDataCount: proposal.additionalData?.length || 0,
       });
 
       const response = await fetch(`/api/customers/${customerId}/apply-updates`, {
@@ -94,8 +145,10 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
         body: JSON.stringify({
           proposalId: proposal.proposalId,
           approvedFieldIds,
+          approvedAdditionalDataIds,
           approvedNote: noteStatus === "accepted",
           editedValues: Object.keys(editedValues).length > 0 ? editedValues : undefined,
+          editedAdditionalData: Object.keys(editedAdditionalData).length > 0 ? editedAdditionalData : undefined,
           editedNoteContent: editedNoteContent ?? undefined,
           proposal, // Send the full proposal for the API to use
         }),
@@ -122,16 +175,18 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
     } finally {
       setIsApplying(false);
     }
-  }, [customerId, proposal, fieldStatuses, noteStatus, editedValues, editedNoteContent, onApplied]);
+  }, [customerId, proposal, fieldStatuses, additionalDataStatuses, noteStatus, editedValues, editedAdditionalData, editedNoteContent, onApplied, router]);
 
-  // Count statuses
+  // Count field statuses
   const acceptedCount = Object.values(fieldStatuses).filter((s) => s === "accepted").length;
   const rejectedCount = Object.values(fieldStatuses).filter((s) => s === "rejected").length;
   const pendingCount = Object.values(fieldStatuses).filter((s) => s === "pending").length;
 
+  // Count additional data statuses
+  const additionalAcceptedCount = Object.values(additionalDataStatuses).filter((s) => s === "accepted").length;
+
   // Check if any changes to apply
-  const hasAccepted = acceptedCount > 0 || noteStatus === "accepted";
-  const allDecided = pendingCount === 0 && noteStatus !== "pending";
+  const hasAccepted = acceptedCount > 0 || additionalAcceptedCount > 0 || noteStatus === "accepted";
 
   if (applied) {
     return (
@@ -146,8 +201,11 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
               <span className="font-medium">Updates applied successfully</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {acceptedCount} field{acceptedCount !== 1 ? "s" : ""} updated
-              {noteStatus === "accepted" && ", note added"}
+              {acceptedCount > 0 && `${acceptedCount} field${acceptedCount !== 1 ? "s" : ""} updated`}
+              {acceptedCount > 0 && additionalAcceptedCount > 0 && ", "}
+              {additionalAcceptedCount > 0 && `${additionalAcceptedCount} additional data item${additionalAcceptedCount !== 1 ? "s" : ""} added`}
+              {(acceptedCount > 0 || additionalAcceptedCount > 0) && noteStatus === "accepted" && ", "}
+              {noteStatus === "accepted" && "note added"}
             </p>
           </CardContent>
         </Card>
@@ -189,18 +247,50 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
             Review the extracted information and approve or reject each field.
           </p>
         </CardHeader>
-        <CardContent className="space-y-3 pb-3">
-          {/* Field updates */}
-          {proposal.fieldUpdates.map((field) => (
-            <FieldUpdateCard
-              key={field.id}
-              field={field}
-              status={fieldStatuses[field.id]}
-              editedValue={editedValues[field.id]}
-              onAction={(action) => handleFieldAction(field.id, action)}
-              onEdit={(value) => handleFieldEdit(field.id, value)}
-            />
-          ))}
+        <CardContent className="space-y-4 pb-3">
+          {/* Field updates grouped by confidence */}
+          {(["high", "medium", "low"] as const).map((confidence) => {
+            const fields = groupedFields[confidence];
+            if (fields.length === 0) return null;
+            return (
+              <ConfidenceGroup
+                key={confidence}
+                confidence={confidence}
+                fields={fields}
+                fieldStatuses={fieldStatuses}
+                editedValues={editedValues}
+                onAction={handleFieldAction}
+                onEdit={handleFieldEdit}
+                defaultOpen={confidence === "low"} // Low confidence expanded by default for review
+              />
+            );
+          })}
+
+          {/* Additional data section */}
+          {proposal.additionalData && proposal.additionalData.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pt-2 border-t">
+                <Plus className="size-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Additional Information</span>
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  {proposal.additionalData.length} item{proposal.additionalData.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These data points don&apos;t match standard profile fields but may be valuable.
+              </p>
+              {proposal.additionalData.map((data) => (
+                <AdditionalDataCard
+                  key={data.id}
+                  data={data}
+                  status={additionalDataStatuses[data.id]}
+                  editedValue={editedAdditionalData[data.id]}
+                  onAction={(action) => handleAdditionalDataAction(data.id, action)}
+                  onEdit={(value) => handleAdditionalDataEdit(data.id, value)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Note proposal */}
           <NoteProposalCard

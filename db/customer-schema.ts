@@ -292,6 +292,11 @@ export const customer = pgTable(
     // -------------------------------------------------------------------------
     profileCreatedBy: text("profile_created_by"),
     profileLastUpdatedBy: text("profile_last_updated_by"),
+
+    // -------------------------------------------------------------------------
+    // Additional Data (non-schema key-value pairs)
+    // -------------------------------------------------------------------------
+    additionalData: jsonb("additional_data"),
   },
   (table) => [
     index("customer_full_name_idx").on(table.fullName),
