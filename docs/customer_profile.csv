@@ -1,0 +1,100 @@
+Section,data_key,display_name,data_type,priority,field_class,source,enum/options (incl. Other),notes / validation
+Identity,full_name,Full Name,text,High,FACT,client_declared,—,Free text
+Identity,dob,Date of Birth,date,High,FACT,client_declared/document_shared,—,Format: DD-MMM-YYYY (or ISO internally)
+Identity,age_band,Age Band,enum,Medium,FACT,client_declared,<25 | 25–34 | 35–44 | 45–54 | 55–64 | 65+ | Other,"Use if DOB not available; if Other, capture age_band_other"
+Identity,gender,Gender,enum,Low,FACT,client_declared,Male | Female | Non-binary | Prefer not to say | Other,"If Other, capture gender_other"
+Identity,marital_status,Marital Status,enum,Medium,FACT,client_declared,Single | Married | Divorced | Widowed | Separated | Other,"If Other, capture marital_status_other"
+Household,dependents_count,Number of Dependents,number,Medium,FACT,client_declared,—,0–20
+Household,dependents_notes,Dependents Details,text,Low,SIGNAL,client_declared,—,Names/ages/relationships (if comfortable)
+Household,household_structure,Household Structure,enum,Low,SIGNAL,client_declared,Nuclear | Joint family | Living alone | Other,"If Other, capture household_structure_other"
+Household,family_financial_responsibilities,Family Financial Responsibilities,text,Medium,SIGNAL,client_declared,—,"e.g., parents support, siblings, etc."
+Location,city_of_residence,City of Residence,text,High,FACT,client_declared,—,Free text
+Location,country_of_residence,Country of Residence,enum,Medium,FACT,client_declared,India | UAE | US | UK | Singapore | Other,"If Other, capture country_of_residence_other"
+Location,residence_status,Residence Status,enum,Medium,FACT,client_declared,Resident | NRI | OCI | PIO | Other,"If Other, capture residence_status_other"
+Contact,primary_mobile,Primary Contact Number,text,High,FACT,client_declared,—,Prefer E.164 storage (+91…)
+Contact,secondary_mobile,Secondary Contact Number,text,Low,FACT,client_declared,—,Optional
+Contact,email_primary,Email Address,text,High,FACT,client_declared,—,Validate email format
+Contact Prefs,preferred_channel,Preferred Communication Channel,enum,High,SIGNAL,client_declared,WhatsApp | Call | Email | SMS | Other,"If Other, capture preferred_channel_other"
+Contact Prefs,preferred_contact_time,Preferred Time to Contact,enum,Low,SIGNAL,client_declared,Morning | Afternoon | Evening | Weekends | Flexible | Other,"If Other, capture preferred_contact_time_other"
+Contact Prefs,language_preference,Language Preference,enum,Low,SIGNAL,client_declared,English | Hindi | Marathi | Tamil | Telugu | Bengali | Other,"If Other, capture language_preference_other"
+Relationship,relationship_origin,How RM met client,enum,Medium,SIGNAL,rm_observed,Referral | Existing relationship | Event | Cold outreach | Digital inbound | Other,"If Other, capture relationship_origin_other"
+Relationship,referral_source_name,Referral Source (Name),text,Low,SIGNAL,rm_observed,—,Optional
+Professional,occupation_type,Occupation Type,enum,High,FACT,client_declared,Salaried | Business Owner | Professional | Self-employed | Retired | Unemployed | Other,"If Other, capture occupation_type_other"
+Professional,industry,Work Industry,enum,Medium,SIGNAL,client_declared,IT | BFSI | Pharma | Manufacturing | Healthcare | Real Estate | Education | Govt | Other,"If Other, capture industry_other"
+Professional,job_title,Job Title / Designation,text,Low,SIGNAL,client_declared,—,Free text
+Professional,employer_business_name,Employer / Business Name,text,Medium,SIGNAL,client_declared,—,Free text
+Professional,work_location,Work Location,text,Low,SIGNAL,client_declared,—,City/country if relevant
+Income,income_band_annual,Annual Income Band,enum,High,FACT,client_declared,<10L | 10–25L | 25–50L | 50L–1Cr | 1–2Cr | 2Cr+ | Other,"If Other, capture income_band_annual_other"
+Income,income_stability,Income Stability,enum,High,SIGNAL,client_declared,Stable | Variable | Seasonal | Uncertain | Other,"If Other, capture income_stability_other"
+Income,income_sources_primary,Primary Income Source,enum,Medium,SIGNAL,client_declared,Salary | Business | Rent | Capital Gains | Dividends | Pension | Other,"If Other, capture income_sources_primary_other"
+Income,income_sources_secondary,Secondary Income Sources,text,Low,SIGNAL,client_declared,—,Free text
+Liquidity,upcoming_liquidity_events,Upcoming Liquidity Events,text,High,SIGNAL,client_declared,—,"e.g., ESOP vesting, property sale; include rough timeline"
+Liquidity,liquidity_needs_horizon,Liquidity Needs Horizon,enum,High,SIGNAL,client_declared,<3 months | 3–12 months | 1–3 years | 3–5 years | 5+ years | Other,"If Other, capture liquidity_needs_horizon_other"
+Cashflow,expense_band_monthly,Monthly Expense Band,enum,High,SIGNAL,client_declared,<50k | 50k–1L | 1–2L | 2–5L | 5L+ | Other,"If Other, capture expense_band_monthly_other"
+Cashflow,surplus_investable_band,Investable Surplus Band (Monthly),enum,High,SIGNAL,client_declared,<25k | 25k–50k | 50k–1L | 1–3L | 3L+ | Other,"If Other, capture surplus_investable_band_other"
+Cashflow,emergency_buffer_status,Emergency Buffer Status,enum,High,SIGNAL,client_declared,None | <3 months | 3–6 months | 6–12 months | 12+ months | Other,"If Other, capture emergency_buffer_status_other"
+Liabilities,liabilities_presence,Liabilities Present?,enum,Medium,SIGNAL,client_declared,None | Home loan | Personal loan | Business loan | Credit card | Multiple | Other,"If Other, capture liabilities_presence_other"
+Liabilities,liabilities_notes,Liabilities Notes,text,Medium,SIGNAL,client_declared,—,Qualitative summary (avoid demanding exact numbers)
+Goals,goals_summary,Goals Summary,text,High,SIGNAL,client_declared,—,Free-text capture of main goals
+Goals,goals_json,Goals (Structured),json,Medium,SIGNAL,rm_observed/client_declared,—,"Array objects: {type, amount_band, target_year/years, priority, fixed_flexible}"
+Goals,primary_goal_type,Primary Goal Type,enum,High,SIGNAL,client_declared,Retirement | Child education | Home purchase | Wealth creation | Business goal | Travel/lifestyle | Tax planning | Capital preservation | Other,"If Other, capture primary_goal_type_other"
+Goals,primary_goal_horizon,Primary Goal Horizon,enum,High,SIGNAL,client_declared,<1y | 1–3y | 3–5y | 5–10y | 10y+ | Other,"If Other, capture primary_goal_horizon_other"
+Goals,goal_priority_style,Goal Priority Style,enum,Medium,SIGNAL,client_declared,One primary | Multiple equal | Unsure | Other,"If Other, capture goal_priority_style_other"
+Goals,goal_clarity_level,Goal Clarity Level,enum,Medium,SIGNAL,rm_observed,Clear | Rough | Unclear | Other,"If Other, capture goal_clarity_level_other"
+Constraints,constraints_summary,Key Constraints,text,High,SIGNAL,client_declared,—,"Liquidity, lock-ins, product bans, etc."
+Constraints,regulatory_constraints_notes,Regulatory Constraints Notes,text,Medium,SIGNAL,client_declared,—,"NRI constraints, employer restrictions, etc. (meeting-learned)"
+Preferences,investment_style_preference,Investment Style Preference,enum,High,SIGNAL,client_declared,SIP | Lump sum | Mix | Unsure | Other,"If Other, capture investment_style_preference_other"
+Preferences,asset_class_preference,Preferred Asset Classes,multi_select,Medium,SIGNAL,client_declared,Equity | Debt | Gold | International | Alternatives | Other,"If Other selected, capture asset_class_preference_other"
+Preferences,product_preference,Product Preferences,multi_select,Medium,SIGNAL,client_declared,Mutual Funds | PMS | AIF | Direct Equity | Insurance | FDs/Bonds | Structured | Other,"If Other selected, capture product_preference_other"
+Preferences,products_to_avoid,Products to Avoid,text,Medium,SIGNAL,client_declared,—,Free text (can later map to enums)
+Preferences,liquidity_preference,Liquidity Preference,enum,High,SIGNAL,client_declared,High liquidity | Balanced | Can lock-in | Other,"If Other, capture liquidity_preference_other"
+Preferences,tax_sensitivity,Tax Sensitivity,enum,Medium,SIGNAL,client_declared,Low | Medium | High | Other,"If Other, capture tax_sensitivity_other"
+Preferences,esg_preference,ESG / Ethical Preference,enum,Low,SIGNAL,client_declared,No preference | Interested | Strong requirement | Other,"If Other, capture esg_preference_other"
+Preferences,sector_tilts_preferences,Sector/Theme Preferences,text,Low,SIGNAL,client_declared,—,Free text
+Preferences,international_exposure_comfort,International Exposure Comfort,enum,Medium,SIGNAL,client_declared,None | Limited | Moderate | High | Other,"If Other, capture international_exposure_comfort_other"
+Decisioning,decision_style,Decision Style,enum,Medium,SIGNAL,rm_observed,Data-heavy | Balanced | Simple summary | Delegates to RM | Other,"If Other, capture decision_style_other"
+Decisioning,decision_speed,Decision Speed,enum,Low,SIGNAL,rm_observed,Fast | Medium | Slow | Needs family input | Other,"If Other, capture decision_speed_other"
+Education,financial_literacy_level,Financial Literacy Level,enum,Medium,OPINION,rm_observed,Low | Medium | High | Other,"If Other, capture financial_literacy_level_other"
+Education,knowledge_gaps_notes,Knowledge Gaps / Topics to Explain,text,Medium,SIGNAL,rm_observed,—,Free text
+Trust,trust_concerns,Trust Concerns / Past Bad Experiences,text,High,SIGNAL,client_declared,—,Free text
+Trust,past_advisory_experience,Past Advisor Experience,enum,Low,SIGNAL,client_declared,None | Used advisor earlier | Switching advisor now | Other,"If Other, capture past_advisory_experience_other"
+Trust,reasons_for_switching,Reasons for Switching,text,Low,SIGNAL,client_declared,—,Free text
+Risk (Context),risk_anecdotes,Risk Anecdotes (Non-authoritative),text,Medium,SIGNAL,rm_observed/client_declared,—,Stories/observations; not used for scoring
+Risk (Questionnaire),risk_questionnaire_completed,Risk Questionnaire Completed,boolean,High,FACT,questionnaire/system,Yes/No,Store completion state
+Risk (Questionnaire),risk_questionnaire_version,Risk Questionnaire Version,text,High,FACT,questionnaire/system,—,"e.g., v1.0"
+Risk (Questionnaire),risk_profile_qna_json,Risk Profile Q&A (JSON),json,High,FACT,questionnaire,—,Q1–Q9 IDs + answer codes
+Risk (Questionnaire),risk_bucket,Risk Bucket,enum,High,FACT,questionnaire,CAPITAL_PRESERVATION | CONSERVATIVE_BALANCED | BALANCED_GROWTH | GROWTH | Other,"Other should be rare; if Other, capture risk_bucket_other"
+Risk (Questionnaire),behavioral_risk_label,Behavioral Risk Label,enum,High,FACT,questionnaire,LOW | MEDIUM | HIGH | Other,"If Other, capture behavioral_risk_label_other"
+Risk (Questionnaire),liquidity_risk_label,Liquidity Risk Label,enum,High,FACT,questionnaire,LOW | MEDIUM | HIGH | Other,"If Other, capture liquidity_risk_label_other"
+Risk (Questionnaire),return_mismatch_flag,Return Expectation Mismatch Flag,boolean,Medium,FACT,questionnaire,Yes/No,True if need-implied > final bucket
+Risk (Discussion),risk_discussion_notes,Risk Discussion Notes,text,High,SIGNAL,rm_observed,—,How client reacted; objections; clarifications
+Risk (Discussion),risk_disagreement_flag,Client Disagrees with Risk Outcome,enum,Medium,SIGNAL,rm_observed,No | Mildly | Strongly | Other,"If Other, capture risk_disagreement_flag_other"
+Suitability (Meeting),product_restrictions_notes,Product Restrictions (Meeting-learned),text,Medium,SIGNAL,client_declared,—,"“Cannot do X”, “avoid lock-ins”, etc."
+Suitability (Meeting),ticket_size_sip_band,SIP Ticket Size Comfort,enum,Medium,SIGNAL,client_declared,<10k | 10–25k | 25–50k | 50k–1L | 1L+ | Other,"If Other, capture ticket_size_sip_band_other"
+Suitability (Meeting),ticket_size_lumpsum_band,Lump Sum Ticket Size Comfort,enum,Medium,SIGNAL,client_declared,<1L | 1–5L | 5–10L | 10–25L | 25L+ | Other,"If Other, capture ticket_size_lumpsum_band_other"
+Lifestyle,primary_interests,Primary Interests,text,Low,SIGNAL,client_declared,—,"Hobbies, interests (relationship building)"
+Lifestyle,lifestyle_changes_planned,Lifestyle Changes Planned,text,Low,SIGNAL,client_declared,—,"e.g., relocation, upgrade, sabbatical"
+Family/Succession,spouse_involvement_level,Spouse/Family Involvement,enum,Low,SIGNAL,client_declared,Not involved | Consulted | Decision-maker | Other,"If Other, capture spouse_involvement_level_other"
+Family/Succession,succession_planning_interest,Succession Planning Interest,enum,Low,SIGNAL,client_declared,Not now | Interested | Urgent | Other,"If Other, capture succession_planning_interest_other"
+Special Situations,major_life_events_next_12m,Major Life Events (Next 12m),text,High,SIGNAL,client_declared,—,"marriage, birth, job change, etc."
+Special Situations,health_planning_notes,Health / Medical Planning Notes,text,Low,SIGNAL,client_declared,—,Optional; treat as sensitive
+Special Situations,legal_constraints_notes,Legal/Compliance Constraints Notes,text,Low,SIGNAL,client_declared,—,Optional; avoid forcing booleans
+KYC Tracking (CRM),kyc_stage,KYC Stage (Tracking),enum,Medium,SYSTEM,system/rm_observed,Not started | In progress | Completed | Blocked | Other,"If Other, capture kyc_stage_other"
+KYC Tracking (CRM),kyc_gaps_notes,KYC Gaps Notes,text,Medium,SIGNAL,rm_observed,—,"What’s missing (PAN copy, address proof etc.)"
+KYC Tracking (CRM),pan_shared_status,PAN Shared?,enum,Medium,FACT,document_shared,Yes | No | Will share later | Other,"If Other, capture pan_shared_status_other"
+KYC Tracking (CRM),tax_residency_status,Tax Residency Status,enum,Medium,FACT,client_declared,India | Abroad | Dual | Other,"If Other, capture tax_residency_status_other"
+Communication,content_format_preference,Content Format Preference,enum,Medium,SIGNAL,client_declared,Short text | Charts | Data-heavy | Video | Other,"If Other, capture content_format_preference_other"
+Communication,advisory_touch_frequency,Preferred Touch Frequency,enum,Medium,SIGNAL,client_declared,Weekly | Bi-weekly | Monthly | Quarterly | Ad-hoc | Other,"If Other, capture advisory_touch_frequency_other"
+Communication,communication_tone_preference,Preferred Communication Tone,enum,Low,SIGNAL,client_declared,Formal | Professional | Friendly | Casual | Other,"If Other, capture communication_tone_preference_other"
+RM Workflow,next_follow_up_date,Next Follow-up Date,date,High,SYSTEM,rm_observed/system,—,CRM tasking; ISO storage
+RM Workflow,next_follow_up_agenda,Next Follow-up Agenda,text,High,OPINION,rm_observed,—,What RM plans to cover
+Meetings/Notes,last_meeting_date,Last Meeting Date,date,High,SYSTEM,system/rm_observed,—,ISO storage
+Meetings/Notes,last_meeting_notes,Last Meeting Notes,text,High,SYSTEM,rm_observed,—,Free text or dictated summary
+Meetings/Notes,key_discussion_points,Key Discussion Points,text,Medium,SYSTEM,rm_observed,—,Bullet themes (can be agent-assisted)
+Meetings/Notes,client_pain_points,Pain Points Identified,text,Medium,SIGNAL,rm_observed,—,What frustrates client
+Meetings/Notes,client_feedback,Client Feedback,text,Low,SIGNAL,client_declared,—,Verbatim highlights
+Meetings/Notes,relationship_strength_notes,Relationship Strength Notes,text,Low,OPINION,rm_observed,—,RM judgement; internal
+Audit,profile_created_date,Profile Created Date,date,High,SYSTEM,system,—,System populated
+Audit,profile_created_by,Profile Created By,text,High,SYSTEM,system,—,RM/user id
+Audit,profile_last_updated_date,Last Updated Date,date,High,SYSTEM,system,—,System populated
+Audit,profile_last_updated_by,Last Updated By,text,High,SYSTEM,system,—,RM/user id

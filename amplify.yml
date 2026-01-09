@@ -1,0 +1,30 @@
+version: 1
+frontend:
+    phases:
+        preBuild:
+            commands:
+                - 'curl -fsSL https://bun.sh/install | bash'
+                - 'export BUN_INSTALL="$HOME/.bun"'
+                - 'export PATH="$BUN_INSTALL/bin:$PATH"'
+                - 'bun install'
+        build:
+            commands:
+              - 'export BUN_INSTALL="$HOME/.bun"'
+              - 'export PATH="$BUN_INSTALL/bin:$PATH"'
+              - 'echo "DATABASE_URL is set: $(if [ -n \"$DATABASE_URL\" ]; then echo yes; else echo NO; fi)"'
+              - |
+                cat << EOF > .env.production
+                DATABASE_URL=$DATABASE_URL
+                BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+                BETTER_AUTH_URL=$BETTER_AUTH_URL
+                EOF
+              - 'bun run build'
+    artifacts:
+        baseDirectory: .next
+        files:
+            - '**/*'
+    cache:
+        paths:
+            - '.next/cache/**/*'
+            - 'node_modules/**/*'
+            - '~/.bun/**/*'
