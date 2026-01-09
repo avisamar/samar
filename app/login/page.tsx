@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -39,8 +40,18 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8">
-          <h1 className="text-xl font-medium">Sign in to Samar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <div className="flex items-center gap-3 mb-4">
+            <Image
+              src="/logo.jpg"
+              alt="Samar"
+              width={40}
+              height={40}
+              className="rounded"
+              unoptimized
+            />
+            <h1 className="text-xl font-medium">Sign in to Samar</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
             Enter your credentials to continue
           </p>
         </div>

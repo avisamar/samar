@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Users, StickyNote, CheckSquare, LogOut } from "lucide-react";
@@ -47,8 +48,16 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b px-4 py-3">
-        <Link href="/" className="text-sm font-medium">
-          Samar
+        <Link href="/" className="flex items-center gap-2">
+          <Image
+            src="/logo.jpg"
+            alt="Samar"
+            width={24}
+            height={24}
+            className="rounded"
+            unoptimized
+          />
+          <span className="text-sm font-medium">Samar</span>
         </Link>
       </SidebarHeader>
       <SidebarContent>
