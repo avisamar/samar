@@ -80,6 +80,66 @@ export function ConfidenceGroup({
     return null;
   }
 
+  // High confidence fields are always shown expanded without collapsible behavior
+  if (confidence === "high") {
+    return (
+      <div className={cn("rounded-lg border", config.borderColor)}>
+        {/* Static Header */}
+        <div
+          className={cn(
+            "flex items-center justify-between p-3 rounded-t-lg",
+            config.bgColor
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Icon className={cn("size-4", config.color)} />
+            <span className={cn("font-medium text-sm", config.color)}>{config.label}</span>
+            <Badge variant="outline" className={cn("text-xs", config.color, config.borderColor)}>
+              {fields.length}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-1">
+            {acceptedCount > 0 && (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                {acceptedCount}
+              </Badge>
+            )}
+            {rejectedCount > 0 && (
+              <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                {rejectedCount}
+              </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                {pendingCount}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Description */}
+        <p className={cn("text-xs text-muted-foreground px-3 py-2 border-b", config.borderColor)}>
+          {config.description}
+        </p>
+
+        {/* Fields - always visible */}
+        <div className="p-3 space-y-3">
+          {fields.map((field) => (
+            <FieldUpdateCard
+              key={field.id}
+              field={field}
+              status={fieldStatuses[field.id]}
+              editedValue={editedValues[field.id]}
+              onAction={(action) => onAction(field.id, action)}
+              onEdit={(value) => onEdit(field.id, value)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Medium and low confidence fields use collapsible behavior
   return (
     <div className={cn("rounded-lg border", config.borderColor)}>
       {/* Header */}
