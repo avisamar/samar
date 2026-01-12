@@ -20,6 +20,7 @@ import {
   type ProposedAdditionalData,
   PROPOSAL_TOOL_NAME,
 } from "./extraction-types";
+import { crmRepository } from "./repository";
 
 const checkpointer = new MemorySaver();
 
@@ -31,12 +32,23 @@ interface ProfileAgentOptions {
 
 /**
  * Create the get_customer_profile tool that fetches profile data by section.
+ * Fetches fresh data from the database on each call to ensure up-to-date information.
  */
-function createGetCustomerProfileTool(customer: CustomerWithNotes) {
+function createGetCustomerProfileTool(customerId: string) {
   const sectionIds = PROFILE_SECTIONS.map((s) => s.id);
 
   return tool(
     async ({ section }) => {
+      // Always fetch fresh data from the database
+      const customer = await crmRepository.getCustomerWithNotes(customerId);
+      if (!customer) {
+        return JSON.stringify({
+          error: `Customer with ID "${customerId}" not found.`,
+        });
+      }
+
+      console.log("[ProfileAgent] Fetched fresh customer profile for:", customer.fullName);
+
       // If no section specified or "all", return full profile summary
       if (!section || section === "all") {
         const profileData = formatProfileForPrompt(customer);
@@ -83,13 +95,17 @@ function createGetCustomerProfileTool(customer: CustomerWithNotes) {
     },
     {
       name: "get_customer_profile",
-      description: `Fetch customer profile data. Use this tool to retrieve specific information about the customer's profile. You can fetch a specific section or the entire profile.
+      description: `Fetch the latest customer profile data from the database. Use this tool to retrieve specific information about the customer's profile. You can fetch a specific section or the entire profile.
+
+IMPORTANT: Always call this tool BEFORE calling propose_profile_updates to ensure you have the most up-to-date customer data.
 
 Available sections:
 ${PROFILE_SECTIONS.map((s) => `- "${s.id}": ${s.label}`).join("\n")}
 - "all": Get the complete profile summary
 
-Call this tool when you need to look up specific customer information to answer RM questions.`,
+Call this tool:
+1. ALWAYS before proposing profile updates (to ensure fresh data)
+2. When you need to look up specific customer information to answer RM questions`,
       schema: z.object({
         section: z
           .enum(["all", ...sectionIds] as [string, ...string[]])
@@ -345,7 +361,8 @@ export async function runProfileAgent(options: ProfileAgentOptions) {
   console.log("[ProfileAgent] System prompt length:", systemPrompt.length);
 
   // Create tools with customer context
-  const getCustomerProfileTool = createGetCustomerProfileTool(options.customer);
+  // Note: get_customer_profile fetches fresh data from DB each time
+  const getCustomerProfileTool = createGetCustomerProfileTool(options.customer.id);
   const proposeProfileUpdatesTool = createProposeProfileUpdatesTool(options.customer);
 
   console.log("[ProfileAgent] Creating agent with tools...");
@@ -382,11 +399,21 @@ function buildSystemPrompt(customer: CustomerWithNotes): string {
 
 ## Your Primary Role
 When an RM shares meeting notes, call notes, or observations about a customer:
-1. Use the \`propose_profile_updates\` tool to extract structured profile data
-2. The RM will see a card with proposed field updates and can approve/reject each one
-3. NEVER auto-save data - always propose changes for RM confirmation
+1. FIRST call \`get_customer_profile\` to fetch the latest customer data from the database
+2. THEN use the \`propose_profile_updates\` tool to extract structured profile data
+3. The RM will see a card with proposed field updates and can approve/reject each one
+4. NEVER auto-save data - always propose changes for RM confirmation
 
 ## Tools Available
+
+### \`get_customer_profile\`
+**CRITICAL: Always call this tool FIRST before proposing any profile updates.**
+
+This tool fetches the latest customer data from the database. Use it:
+- ALWAYS before calling \`propose_profile_updates\` (to ensure you have fresh data)
+- When the RM asks about specific customer information
+- When you need to check details about a section (goals, income, risk, preferences, etc.)
+- When you want to provide accurate data in your responses
 
 ### \`propose_profile_updates\`
 Use this tool when the RM shares:
@@ -395,13 +422,7 @@ Use this tool when the RM shares:
 - Observations about the customer
 - Any unstructured text containing customer information
 
-This is your PRIMARY tool. When you see meeting notes or observations, call this tool IMMEDIATELY.
-
-### \`get_customer_profile\`
-Use this tool to fetch current profile data when:
-- The RM asks about specific customer information
-- You need to check details about a section (goals, income, risk, preferences, etc.)
-- You want to provide accurate data in your responses
+**IMPORTANT**: Always call \`get_customer_profile\` BEFORE this tool to ensure you have the most up-to-date data.
 
 ## Current Customer Context
 Customer: ${customer.fullName || "Unknown"}
@@ -413,7 +434,8 @@ ${missingFields.map((f) => `- ${f}`).join("\n")}
 ${notesSummary}
 
 ## Guidelines
-- When you see meeting notes or observations, IMMEDIATELY use propose_profile_updates
+- **ALWAYS fetch fresh profile data via \`get_customer_profile\` before proposing updates**
+- The workflow for processing notes is: get_customer_profile → propose_profile_updates
 - For questions about the customer, use get_customer_profile first
 - Be conversational and helpful
 - Acknowledge when information is missing or incomplete

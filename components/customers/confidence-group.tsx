@@ -80,8 +80,8 @@ export function ConfidenceGroup({
     return null;
   }
 
-  // High confidence fields are always shown expanded without collapsible behavior
-  if (confidence === "high") {
+  // High and medium confidence fields are always shown expanded without collapsible behavior
+  if (confidence === "high" || confidence === "medium") {
     return (
       <div className={cn("rounded-lg border", config.borderColor)}>
         {/* Static Header */}
@@ -139,7 +139,7 @@ export function ConfidenceGroup({
     );
   }
 
-  // Medium and low confidence fields use collapsible behavior
+  // Low confidence fields use collapsible behavior (needs careful review)
   return (
     <div className={cn("rounded-lg border", config.borderColor)}>
       {/* Header */}
