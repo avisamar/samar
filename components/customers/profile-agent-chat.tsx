@@ -21,6 +21,60 @@ import {
 } from "@/lib/crm/extraction-types";
 import { ProposalCard } from "./proposal-card";
 
+const AUDIO_SAMPLE_RATE = 16000;
+const AUDIO_BUFFER_SIZE = 4096;
+
+function downsampleBuffer(buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) {
+  if (outputSampleRate === inputSampleRate) {
+    return buffer;
+  }
+
+  const sampleRateRatio = inputSampleRate / outputSampleRate;
+  const newLength = Math.round(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
+      accum += buffer[i];
+      count += 1;
+    }
+
+    result[offsetResult] = accum / count;
+    offsetResult += 1;
+    offsetBuffer = nextOffsetBuffer;
+  }
+
+  return result;
+}
+
+function convertFloat32ToInt16(buffer: Float32Array) {
+  const result = new Int16Array(buffer.length);
+  for (let i = 0; i < buffer.length; i += 1) {
+    const clamped = Math.max(-1, Math.min(1, buffer[i]));
+    result[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return new Uint8Array(result.buffer);
+}
+
+function mergeUint8Arrays(chunks: Uint8Array[]) {
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
+
 // Message type for LangGraph SDK messages
 interface Message {
   id?: string;
@@ -44,8 +98,11 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
   // Voice recording state
   const [recordingState, setRecordingState] = useState<"idle" | "recording" | "transcribing">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioChunksRef = useRef<Uint8Array[]>([]);
   const isMountedRef = useRef(true);
 
   // Configure transport with thread ID for conversation persistence
@@ -121,20 +178,25 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
   };
 
   // Cleanup on unmount to prevent memory leaks
+  const cleanupRecording = useCallback(() => {
+    processorRef.current?.disconnect();
+    sourceRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioContextRef.current?.close().catch(() => null);
+
+    processorRef.current = null;
+    sourceRef.current = null;
+    mediaStreamRef.current = null;
+    audioContextRef.current = null;
+  }, []);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      // Stop any active recording and release microphone
-      if (mediaRecorderRef.current) {
-        const recorder = mediaRecorderRef.current;
-        if (recorder.state !== "inactive") {
-          recorder.stop();
-        }
-        recorder.stream.getTracks().forEach((track) => track.stop());
-      }
+      cleanupRecording();
     };
-  }, []);
+  }, [cleanupRecording]);
 
   // Voice recording handlers
   const handleTranscribe = useCallback(async () => {
@@ -144,15 +206,20 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
     setVoiceError(null);
 
     try {
-      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-      audioChunksRef.current = []; // Clear immediately to prevent duplicate processing
+      const audioData = mergeUint8Arrays(audioChunksRef.current);
+      audioChunksRef.current = [];
 
-      const formData = new FormData();
-      formData.append("audio", audioBlob);
+      if (!audioData.length) {
+        throw new Error("No audio captured. Please try again.");
+      }
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "audio/pcm",
+          "x-audio-sample-rate": AUDIO_SAMPLE_RATE.toString(),
+        },
+        body: audioData,
       });
 
       if (!response.ok) {
@@ -178,25 +245,40 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
         setRecordingState("idle");
       }
     }
-  }, []);
+  }, [handleTextareaChange]);
 
   const handleStartRecording = useCallback(async () => {
+    if (recordingState !== "idle") return;
+
     setVoiceError(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const audioContext = new AudioContext();
+      await audioContext.resume();
+
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(AUDIO_BUFFER_SIZE, 1, 1);
+      const gain = audioContext.createGain();
+      gain.gain.value = 0;
 
       audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
+      processor.onaudioprocess = (event) => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, AUDIO_SAMPLE_RATE);
+        const pcmChunk = convertFloat32ToInt16(downsampled);
+        audioChunksRef.current.push(pcmChunk);
       };
-      recorder.onstop = handleTranscribe;
 
-      recorder.start();
-      mediaRecorderRef.current = recorder;
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(audioContext.destination);
+
+      audioContextRef.current = audioContext;
+      mediaStreamRef.current = stream;
+      sourceRef.current = source;
+      processorRef.current = processor;
+
       setRecordingState("recording");
     } catch (error) {
       console.error("[Voice] Failed to start recording:", error);
@@ -206,22 +288,24 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
         setVoiceError("Failed to start recording. Please check your microphone.");
       }
     }
-  }, [handleTranscribe]);
+  }, [recordingState]);
 
-  const handleStopRecording = useCallback(() => {
-    if (mediaRecorderRef.current) {
-      const recorder = mediaRecorderRef.current;
-      if (recorder.state !== "inactive") {
-        recorder.stop();
-      }
-      recorder.stream.getTracks().forEach((track) => track.stop());
-    }
-  }, []);
+  const handleStopRecording = useCallback(async () => {
+    cleanupRecording();
+    await handleTranscribe();
+  }, [cleanupRecording, handleTranscribe]);
 
   // Filter messages based on showToolMessages prop
   const displayMessages: Message[] = showToolMessages
     ? messages
     : messages.filter((msg): msg is Message => !isToolMessage(msg));
+
+  const voiceStatus =
+    recordingState === "recording"
+      ? "Listening"
+      : recordingState === "transcribing"
+        ? "Transcribing"
+        : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -255,7 +339,25 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
               rows={1}
               disabled={isLoading}
             />
-            <div className="flex items-center gap-1 p-2">
+            <div className="flex items-center gap-2 p-2">
+              {voiceStatus && (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium",
+                    recordingState === "recording"
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-muted-foreground/20 bg-muted/40 text-muted-foreground"
+                  )}
+                >
+                  {recordingState === "recording" ? (
+                    <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                  ) : (
+                    <Loader2 className="size-3 animate-spin" />
+                  )}
+                  <span>{voiceStatus}</span>
+                </div>
+              )}
+
               {/* Voice input button */}
               {recordingState === "idle" ? (
                 <Button
@@ -265,7 +367,7 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
                   onClick={handleStartRecording}
                   disabled={isLoading}
                   className="h-8 w-8 p-0 rounded-lg"
-                  title="Record voice message"
+                  title="Start listening"
                 >
                   <Mic className="size-4" />
                 </Button>
@@ -276,7 +378,7 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
                   size="sm"
                   onClick={handleStopRecording}
                   className="h-8 w-8 p-0 rounded-lg animate-pulse"
-                  title="Stop recording"
+                  title="Stop listening"
                 >
                   <Square className="size-3 fill-current" />
                 </Button>
@@ -293,6 +395,8 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
                 </Button>
               )}
 
+              <div className="mx-1 h-6 w-px bg-border/60" />
+
               {/* Send button */}
               <Button
                 type="submit"
@@ -305,7 +409,7 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2 px-1">
-            Press Enter to send, Shift+Enter for new line. Tap mic to record.
+            Press Enter to send, Shift+Enter for new line. Tap mic to listen.
           </p>
           {/* Voice error display */}
           {voiceError && (
