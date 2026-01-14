@@ -1,6 +1,15 @@
 // CRM Repository exports
-export { crmRepository } from "./repository";
-export type { CrmRepository } from "./repository";
+export {
+  crmRepository,
+  getCrmRepository,
+  createCrmRepository,
+  DrizzleCrmRepository,
+  ExternalCrmRepository,
+} from "./repository";
+export type { ICrmRepository, CrmRepositoryConfig } from "./repository";
+
+// Backward compatibility - CrmRepository type alias
+export type { ICrmRepository as CrmRepository } from "./repository";
 
 // Types
 export type {

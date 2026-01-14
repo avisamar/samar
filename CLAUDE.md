@@ -121,6 +121,10 @@ Required in `.env`:
 - `DATABASE_URL` - PostgreSQL connection string
 - `BETTER_AUTH_SECRET` - Auth session encryption key
 - `BETTER_AUTH_URL` - Base URL for auth callbacks
+- `AWS_ACCESS_KEY_ID` - AWS access key for Transcribe
+- `AWS_SECRET_ACCESS_KEY` - AWS secret access key for Transcribe
+- `AWS_REGION` - AWS region for Transcribe (default `ap-south-1`)
+- `AWS_SESSION_TOKEN` - Optional session token for AWS credentials
 
 ## Frontend Design System
 
