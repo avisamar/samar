@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useEffect, useCallback, useState } from "react";
-import { Send, Sparkles, AlertCircle, Wrench, ChevronDown, ChevronRight, Database } from "lucide-react";
+import { Send, Sparkles, AlertCircle, Wrench, ChevronDown, ChevronRight, Database, Mic, Square, Loader2 } from "lucide-react";
 import { useStream, FetchStreamTransport } from "@langchain/langgraph-sdk/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,60 @@ import {
   type ProfileUpdateProposal,
 } from "@/lib/crm/extraction-types";
 import { ProposalCard } from "./proposal-card";
+
+const AUDIO_SAMPLE_RATE = 16000;
+const AUDIO_BUFFER_SIZE = 4096;
+
+function downsampleBuffer(buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) {
+  if (outputSampleRate === inputSampleRate) {
+    return buffer;
+  }
+
+  const sampleRateRatio = inputSampleRate / outputSampleRate;
+  const newLength = Math.round(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
+      accum += buffer[i];
+      count += 1;
+    }
+
+    result[offsetResult] = accum / count;
+    offsetResult += 1;
+    offsetBuffer = nextOffsetBuffer;
+  }
+
+  return result;
+}
+
+function convertFloat32ToInt16(buffer: Float32Array) {
+  const result = new Int16Array(buffer.length);
+  for (let i = 0; i < buffer.length; i += 1) {
+    const clamped = Math.max(-1, Math.min(1, buffer[i]));
+    result[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return new Uint8Array(result.buffer);
+}
+
+function mergeUint8Arrays(chunks: Uint8Array[]) {
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return merged;
+}
 
 // Message type for LangGraph SDK messages
 interface Message {
@@ -40,6 +94,16 @@ interface ProfileAgentChatProps {
 export function ProfileAgentChat({ customerId, showToolMessages = true }: ProfileAgentChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Voice recording state
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioChunksRef = useRef<Uint8Array[]>([]);
+  const isMountedRef = useRef(true);
 
   // Configure transport with thread ID for conversation persistence
   const transport = useMemo(() => {
@@ -113,10 +177,135 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
     }
   };
 
+  // Cleanup on unmount to prevent memory leaks
+  const cleanupRecording = useCallback(() => {
+    processorRef.current?.disconnect();
+    sourceRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    audioContextRef.current?.close().catch(() => null);
+
+    processorRef.current = null;
+    sourceRef.current = null;
+    mediaStreamRef.current = null;
+    audioContextRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      cleanupRecording();
+    };
+  }, [cleanupRecording]);
+
+  // Voice recording handlers
+  const handleTranscribe = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setRecordingState("transcribing");
+    setVoiceError(null);
+
+    try {
+      const audioData = mergeUint8Arrays(audioChunksRef.current);
+      audioChunksRef.current = [];
+
+      if (!audioData.length) {
+        throw new Error("No audio captured. Please try again.");
+      }
+
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/pcm",
+          "x-audio-sample-rate": AUDIO_SAMPLE_RATE.toString(),
+        },
+        body: audioData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Transcription failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Populate textarea with transcript for RM to review
+      if (isMountedRef.current && textareaRef.current && data.transcript) {
+        textareaRef.current.value = data.transcript;
+        handleTextareaChange();
+        textareaRef.current.focus();
+      }
+    } catch (error) {
+      console.error("[Voice] Transcription error:", error);
+      if (isMountedRef.current) {
+        setVoiceError(error instanceof Error ? error.message : "Transcription failed. Please try again.");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setRecordingState("idle");
+      }
+    }
+  }, [handleTextareaChange]);
+
+  const handleStartRecording = useCallback(async () => {
+    if (recordingState !== "idle") return;
+
+    setVoiceError(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioContext = new AudioContext();
+      await audioContext.resume();
+
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(AUDIO_BUFFER_SIZE, 1, 1);
+      const gain = audioContext.createGain();
+      gain.gain.value = 0;
+
+      audioChunksRef.current = [];
+      processor.onaudioprocess = (event) => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const downsampled = downsampleBuffer(inputData, audioContext.sampleRate, AUDIO_SAMPLE_RATE);
+        const pcmChunk = convertFloat32ToInt16(downsampled);
+        audioChunksRef.current.push(pcmChunk);
+      };
+
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(audioContext.destination);
+
+      audioContextRef.current = audioContext;
+      mediaStreamRef.current = stream;
+      sourceRef.current = source;
+      processorRef.current = processor;
+
+      setRecordingState("recording");
+    } catch (error) {
+      console.error("[Voice] Failed to start recording:", error);
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setVoiceError("Microphone access denied. Please enable microphone permissions in your browser settings.");
+      } else {
+        setVoiceError("Failed to start recording. Please check your microphone.");
+      }
+    }
+  }, [recordingState]);
+
+  const handleStopRecording = useCallback(async () => {
+    cleanupRecording();
+    await handleTranscribe();
+  }, [cleanupRecording, handleTranscribe]);
+
   // Filter messages based on showToolMessages prop
   const displayMessages: Message[] = showToolMessages
     ? messages
     : messages.filter((msg): msg is Message => !isToolMessage(msg));
+
+  const voiceStatus =
+    recordingState === "recording"
+      ? "Listening"
+      : recordingState === "transcribing"
+        ? "Transcribing"
+        : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -150,11 +339,69 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
               rows={1}
               disabled={isLoading}
             />
-            <div className="flex items-center gap-1 p-2">
+            <div className="flex items-center gap-2 p-2">
+              {voiceStatus && (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-medium",
+                    recordingState === "recording"
+                      ? "border-primary/30 bg-primary/10 text-primary"
+                      : "border-muted-foreground/20 bg-muted/40 text-muted-foreground"
+                  )}
+                >
+                  {recordingState === "recording" ? (
+                    <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                  ) : (
+                    <Loader2 className="size-3 animate-spin" />
+                  )}
+                  <span>{voiceStatus}</span>
+                </div>
+              )}
+
+              {/* Voice input button */}
+              {recordingState === "idle" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleStartRecording}
+                  disabled={isLoading}
+                  className="h-8 w-8 p-0 rounded-lg"
+                  title="Start listening"
+                >
+                  <Mic className="size-4" />
+                </Button>
+              ) : recordingState === "recording" ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleStopRecording}
+                  className="h-8 w-8 p-0 rounded-lg animate-pulse"
+                  title="Stop listening"
+                >
+                  <Square className="size-3 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled
+                  className="h-8 w-8 p-0 rounded-lg"
+                  title="Transcribing..."
+                >
+                  <Loader2 className="size-4 animate-spin" />
+                </Button>
+              )}
+
+              <div className="mx-1 h-6 w-px bg-border/60" />
+
+              {/* Send button */}
               <Button
                 type="submit"
                 size="sm"
-                disabled={isLoading}
+                disabled={isLoading || recordingState !== "idle"}
                 className="h-8 w-8 p-0 rounded-lg"
               >
                 <Send className="size-4" />
@@ -162,8 +409,15 @@ export function ProfileAgentChat({ customerId, showToolMessages = true }: Profil
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2 px-1">
-            Press Enter to send, Shift+Enter for new line
+            Press Enter to send, Shift+Enter for new line. Tap mic to listen.
           </p>
+          {/* Voice error display */}
+          {voiceError && (
+            <div className="mt-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-start gap-2">
+              <AlertCircle className="size-4 mt-0.5 flex-shrink-0" />
+              <span>{voiceError}</span>
+            </div>
+          )}
         </form>
       </div>
     </div>
