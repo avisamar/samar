@@ -1,37 +1,32 @@
 import { eq, desc, asc } from "drizzle-orm";
 import db from "@/db";
 import { customer, customerNote } from "@/db/customer-schema";
+import type { ICrmRepository } from "./interface";
 import type {
   Customer,
   NewCustomer,
-  CustomerNote,
+  CustomerNote as CustomerNoteType,
   CustomerWithNotes,
   ListOptions,
   NoteInput,
   CustomerProfileUpdate,
-} from "./types";
-import type { AdditionalDataItem } from "./extraction-types";
+} from "../types";
+import type { AdditionalDataItem } from "../extraction-types";
 
-// =============================================================================
-// CRM Repository
-// =============================================================================
-
-export const crmRepository = {
+/**
+ * Drizzle ORM implementation of ICrmRepository.
+ * Uses PostgreSQL via Neon serverless.
+ */
+export class DrizzleCrmRepository implements ICrmRepository {
   // ---------------------------------------------------------------------------
   // Customer CRUD
   // ---------------------------------------------------------------------------
 
-  /**
-   * Create a new customer
-   */
   async createCustomer(data: NewCustomer): Promise<Customer> {
     const [result] = await db.insert(customer).values(data).returning();
     return result;
-  },
+  }
 
-  /**
-   * Get a customer by ID
-   */
   async getCustomer(id: string): Promise<Customer | null> {
     const [result] = await db
       .select()
@@ -39,11 +34,8 @@ export const crmRepository = {
       .where(eq(customer.id, id))
       .limit(1);
     return result ?? null;
-  },
+  }
 
-  /**
-   * Get a customer with all their notes
-   */
   async getCustomerWithNotes(id: string): Promise<CustomerWithNotes | null> {
     const customerResult = await this.getCustomer(id);
     if (!customerResult) return null;
@@ -58,11 +50,8 @@ export const crmRepository = {
       ...customerResult,
       notes,
     };
-  },
+  }
 
-  /**
-   * Update a customer
-   */
   async updateCustomer(
     id: string,
     data: CustomerProfileUpdate
@@ -73,21 +62,20 @@ export const crmRepository = {
       .where(eq(customer.id, id))
       .returning();
     return result ?? null;
-  },
+  }
 
-  /**
-   * Delete a customer (cascades to notes)
-   */
   async deleteCustomer(id: string): Promise<boolean> {
     const result = await db.delete(customer).where(eq(customer.id, id));
     return result.rowCount !== null && result.rowCount > 0;
-  },
+  }
 
-  /**
-   * List all customers with optional pagination and ordering
-   */
   async listCustomers(options: ListOptions = {}): Promise<Customer[]> {
-    const { limit = 50, offset = 0, orderBy = "createdAt", orderDir = "desc" } = options;
+    const {
+      limit = 50,
+      offset = 0,
+      orderBy = "createdAt",
+      orderDir = "desc",
+    } = options;
 
     const orderColumn = customer[orderBy as keyof typeof customer];
     const orderFn = orderDir === "asc" ? asc : desc;
@@ -98,16 +86,13 @@ export const crmRepository = {
       .orderBy(orderFn(orderColumn as typeof customer.createdAt))
       .limit(limit)
       .offset(offset);
-  },
+  }
 
   // ---------------------------------------------------------------------------
   // Notes CRUD
   // ---------------------------------------------------------------------------
 
-  /**
-   * Add a note to a customer
-   */
-  async addNote(customerId: string, data: NoteInput): Promise<CustomerNote> {
+  async addNote(customerId: string, data: NoteInput): Promise<CustomerNoteType> {
     const [result] = await db
       .insert(customerNote)
       .values({
@@ -116,67 +101,56 @@ export const crmRepository = {
       })
       .returning();
     return result;
-  },
+  }
 
-  /**
-   * Get a note by ID
-   */
-  async getNote(id: string): Promise<CustomerNote | null> {
+  async getNote(id: string): Promise<CustomerNoteType | null> {
     const [result] = await db
       .select()
       .from(customerNote)
       .where(eq(customerNote.id, id))
       .limit(1);
     return result ?? null;
-  },
+  }
 
-  /**
-   * Update a note
-   */
   async updateNote(
     id: string,
     data: Partial<NoteInput>
-  ): Promise<CustomerNote | null> {
+  ): Promise<CustomerNoteType | null> {
     const [result] = await db
       .update(customerNote)
       .set(data)
       .where(eq(customerNote.id, id))
       .returning();
     return result ?? null;
-  },
+  }
 
-  /**
-   * Delete a note
-   */
   async deleteNote(id: string): Promise<boolean> {
-    const result = await db.delete(customerNote).where(eq(customerNote.id, id));
+    const result = await db
+      .delete(customerNote)
+      .where(eq(customerNote.id, id));
     return result.rowCount !== null && result.rowCount > 0;
-  },
+  }
 
-  /**
-   * List all notes for a customer
-   */
-  async listNotes(customerId: string): Promise<CustomerNote[]> {
+  async listNotes(customerId: string): Promise<CustomerNoteType[]> {
     return db
       .select()
       .from(customerNote)
       .where(eq(customerNote.customerId, customerId))
       .orderBy(desc(customerNote.createdAt));
-  },
+  }
 
   // ---------------------------------------------------------------------------
   // Profile Enrichment Helpers
   // ---------------------------------------------------------------------------
 
-  /**
-   * Update specific profile fields (partial update)
-   * Useful for incremental profile enrichment from agent-extracted data
-   */
   async updateProfileFields(
     customerId: string,
     fields: Record<string, unknown>
   ): Promise<Customer | null> {
-    console.log("[Repository] updateProfileFields called with:", { customerId, fields });
+    console.log("[DrizzleCrmRepository] updateProfileFields called with:", {
+      customerId,
+      fields,
+    });
 
     // Filter out undefined values and reserved fields
     const validFields: Record<string, unknown> = {};
@@ -188,46 +162,50 @@ export const crmRepository = {
       }
     }
 
-    console.log("[Repository] Valid fields after filtering:", validFields);
+    console.log(
+      "[DrizzleCrmRepository] Valid fields after filtering:",
+      validFields
+    );
 
     if (Object.keys(validFields).length === 0) {
-      console.log("[Repository] No valid fields to update, returning existing customer");
+      console.log(
+        "[DrizzleCrmRepository] No valid fields to update, returning existing customer"
+      );
       return this.getCustomer(customerId);
     }
 
-    console.log("[Repository] Executing database update...");
+    console.log("[DrizzleCrmRepository] Executing database update...");
     const [result] = await db
       .update(customer)
       .set(validFields as CustomerProfileUpdate)
       .where(eq(customer.id, customerId))
       .returning();
 
-    console.log("[Repository] Update result:", result ? "success" : "no result");
+    console.log(
+      "[DrizzleCrmRepository] Update result:",
+      result ? "success" : "no result"
+    );
     return result ?? null;
-  },
+  }
 
-  /**
-   * Append additional data items to a customer's additionalData JSONB field.
-   * Merges with existing data, updating items with matching keys.
-   */
   async appendAdditionalData(
     customerId: string,
     newData: AdditionalDataItem[]
   ): Promise<Customer | null> {
-    console.log("[Repository] appendAdditionalData called with:", {
+    console.log("[DrizzleCrmRepository] appendAdditionalData called with:", {
       customerId,
       newDataCount: newData.length,
     });
 
     if (newData.length === 0) {
-      console.log("[Repository] No additional data to append");
+      console.log("[DrizzleCrmRepository] No additional data to append");
       return this.getCustomer(customerId);
     }
 
     // Get existing customer
     const existingCustomer = await this.getCustomer(customerId);
     if (!existingCustomer) {
-      console.log("[Repository] Customer not found");
+      console.log("[DrizzleCrmRepository] Customer not found");
       return null;
     }
 
@@ -235,7 +213,10 @@ export const crmRepository = {
     const existingData: AdditionalDataItem[] =
       (existingCustomer.additionalData as AdditionalDataItem[]) || [];
 
-    console.log("[Repository] Existing additional data count:", existingData.length);
+    console.log(
+      "[DrizzleCrmRepository] Existing additional data count:",
+      existingData.length
+    );
 
     // Merge: update existing keys, append new ones
     const dataMap = new Map(existingData.map((d) => [d.key, d]));
@@ -244,7 +225,10 @@ export const crmRepository = {
     }
 
     const mergedData = Array.from(dataMap.values());
-    console.log("[Repository] Merged additional data count:", mergedData.length);
+    console.log(
+      "[DrizzleCrmRepository] Merged additional data count:",
+      mergedData.length
+    );
 
     // Update the customer
     const [result] = await db
@@ -253,9 +237,10 @@ export const crmRepository = {
       .where(eq(customer.id, customerId))
       .returning();
 
-    console.log("[Repository] Additional data update result:", result ? "success" : "no result");
+    console.log(
+      "[DrizzleCrmRepository] Additional data update result:",
+      result ? "success" : "no result"
+    );
     return result ?? null;
-  },
-};
-
-export type CrmRepository = typeof crmRepository;
+  }
+}

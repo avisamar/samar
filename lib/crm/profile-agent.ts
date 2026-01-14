@@ -120,10 +120,21 @@ Call this tool:
 
 /**
  * Create the propose_profile_updates tool that extracts profile updates from meeting notes.
+ * Takes customerId instead of customer object to ensure fresh data is fetched on each call.
  */
-function createProposeProfileUpdatesTool(customer: CustomerWithNotes) {
+function createProposeProfileUpdatesTool(customerId: string) {
   return tool(
     async ({ content, source }) => {
+      // Fetch fresh customer data to ensure we have the latest profile
+      const customer = await crmRepository.getCustomerWithNotes(customerId);
+      if (!customer) {
+        return JSON.stringify({
+          error: `Customer with ID "${customerId}" not found.`,
+        });
+      }
+
+      console.log("[ProfileAgent] propose_profile_updates: fetched fresh customer data for:", customer.fullName);
+
       // Use the same LLM to extract structured data
       const extractionModel = new ChatOpenAI({
         model: "gpt-4o",
@@ -361,9 +372,9 @@ export async function runProfileAgent(options: ProfileAgentOptions) {
   console.log("[ProfileAgent] System prompt length:", systemPrompt.length);
 
   // Create tools with customer context
-  // Note: get_customer_profile fetches fresh data from DB each time
+  // Both tools fetch fresh data from the repository on each call
   const getCustomerProfileTool = createGetCustomerProfileTool(options.customer.id);
-  const proposeProfileUpdatesTool = createProposeProfileUpdatesTool(options.customer);
+  const proposeProfileUpdatesTool = createProposeProfileUpdatesTool(options.customer.id);
 
   console.log("[ProfileAgent] Creating agent with tools...");
   const agent = createAgent({
