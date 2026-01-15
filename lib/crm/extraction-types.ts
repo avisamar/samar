@@ -119,13 +119,17 @@ export interface AdditionalDataItem {
 
 /** Tool output type marker for UI detection */
 export const PROPOSAL_TOOL_NAME = "propose_profile_updates";
+export const FINALIZE_PROPOSAL_TOOL_NAME = "finalize_proposal";
 
 /** Check if a tool result is a profile update proposal */
 export function isProfileUpdateProposal(
   toolName: string | undefined,
   content: unknown
 ): content is ProfileUpdateProposal {
-  if (toolName !== PROPOSAL_TOOL_NAME) return false;
+  // Accept both propose_profile_updates and finalize_proposal
+  if (toolName !== PROPOSAL_TOOL_NAME && toolName !== FINALIZE_PROPOSAL_TOOL_NAME) {
+    return false;
+  }
   if (!content || typeof content !== "object") return false;
   const obj = content as Record<string, unknown>;
   return (

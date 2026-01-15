@@ -6,7 +6,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import type { CustomerWithNotes, CustomerNote, Customer } from "./types";
-import { PROFILE_SECTIONS, type FieldDefinition } from "./sections";
+import { PROFILE_SECTIONS } from "./sections";
 import {
   getFieldDefinition,
   getFieldValue,
@@ -14,11 +14,22 @@ import {
   getExtractionSchema,
 } from "./field-mapping";
 import {
+  scoreEmptyFields,
+  selectTopFields,
+  deduplicateFields,
+  generateQuestions,
+  type ExtractionWithNudges,
+  type Extraction,
+  type NudgeAnswer,
+  type NudgeQuestion,
+  EXTRACT_AND_NUDGES_TOOL_NAME,
+  FINALIZE_PROPOSAL_TOOL_NAME,
+} from "./nudges";
+import {
   type ProfileUpdateProposal,
   type ProposedFieldUpdate,
   type ProposedNote,
   type ProposedAdditionalData,
-  PROPOSAL_TOOL_NAME,
 } from "./extraction-types";
 import { crmRepository } from "./repository";
 
@@ -119,12 +130,15 @@ Call this tool:
 }
 
 /**
- * Create the propose_profile_updates tool that extracts profile updates from meeting notes.
+ * Create the extract_and_generate_nudges tool.
+ * Phase 1 of two-phase workflow: extract data + generate follow-up questions.
  */
-function createProposeProfileUpdatesTool(customer: CustomerWithNotes) {
+function createExtractAndGenerateNudgesTool(customer: CustomerWithNotes) {
   return tool(
     async ({ content, source }) => {
-      // Use the same LLM to extract structured data
+      console.log("[ProfileAgent] extract_and_generate_nudges called");
+
+      // Step 1: Extract data using LLM (same pattern as propose_profile_updates)
       const extractionModel = new ChatOpenAI({
         model: "gpt-4o",
         apiKey: process.env.OPENAI_API_KEY,
@@ -142,97 +156,49 @@ ${getExtractionSchema()}
 1. Extract information that matches the profile schema fields above
 2. ALSO extract relevant customer information that does NOT fit the schema fields above
 3. For non-schema data, create descriptive keys in snake_case and human-readable labels
-4. Examples of non-schema data worth capturing:
-   - estimated_net_worth / "Estimated Net Worth"
-   - competitor_advisor / "Current/Previous Advisor"
-   - specific_investment_holdings / "Current Holdings Mentioned"
-   - family_member_details / "Family Member Details"
-   - specific_concerns_verbatim / "Specific Concerns (Verbatim)"
-   - estate_planning_notes / "Estate Planning Notes"
-   - insurance_coverage_notes / "Insurance Coverage Notes"
-5. For each extracted item, include a brief quote from the source text
-6. Assign confidence levels:
-   - "high": Directly stated (e.g., "earns 60L per year", "net worth around 5Cr")
+4. For each extracted item, include a brief quote from the source text
+5. Assign confidence levels:
+   - "high": Directly stated (e.g., "earns 60L per year")
    - "medium": Strongly implied (e.g., "senior position" implies high income)
    - "low": Inferred with uncertainty
-7. Generate a concise note summarizing the key points
-8. Generate relevant tags for the note
+6. Generate a concise note summarizing the key points
+7. Generate relevant tags for the note
 
 ## Input (${source})
 ${content}
 
 ## Output Format
-Return a JSON object with:
+Return a JSON object:
 {
   "extractedFields": [
-    {
-      "field": "field_key",
-      "value": "extracted value",
-      "confidence": "high|medium|low",
-      "source": "quote from input"
-    }
+    { "field": "field_key", "value": "extracted value", "confidence": "high|medium|low", "source": "quote" }
   ],
   "additionalData": [
-    {
-      "key": "snake_case_key",
-      "label": "Human Readable Label",
-      "value": "extracted value",
-      "confidence": "high|medium|low",
-      "source": "quote from input",
-      "category": "optional category like wealth, family, advisor, etc."
-    }
+    { "key": "snake_case_key", "label": "Human Label", "value": "value", "confidence": "high|medium|low", "source": "quote", "category": "optional" }
   ],
-  "noteSummary": "Concise summary of the interaction",
+  "noteSummary": "Concise summary",
   "noteTags": ["tag1", "tag2"]
-}
-
-Only include fields/data where you found relevant information. If nothing can be extracted, return empty arrays.`;
-
-      console.log("[ProfileAgent] Extraction schema sample:", getExtractionSchema().slice(0, 500));
+}`;
 
       const response = await extractionModel.invoke([
         { role: "system", content: extractionPrompt },
         { role: "user", content: `Extract profile data from this ${source}: ${content}` },
       ]);
 
-      console.log("[ProfileAgent] LLM extraction response:", response.content);
-
-      // Parse the LLM response
-      let extraction: {
-        extractedFields: Array<{
-          field: string;
-          value: unknown;
-          confidence: "high" | "medium" | "low";
-          source: string;
-        }>;
-        additionalData: Array<{
-          key: string;
-          label: string;
-          value: unknown;
-          confidence: "high" | "medium" | "low";
-          source: string;
-          category?: string;
-        }>;
-        noteSummary: string;
-        noteTags: string[];
-      };
-
+      // Parse extraction response
+      let extraction: Extraction;
       try {
         const responseText = typeof response.content === "string"
           ? response.content
           : JSON.stringify(response.content);
 
-        // Extract JSON from response (handle markdown code blocks)
         const jsonMatch = responseText.match(/```json\n?([\s\S]*?)\n?```/) ||
           responseText.match(/\{[\s\S]*\}/);
 
         if (jsonMatch) {
           const jsonStr = jsonMatch[1] || jsonMatch[0];
           extraction = JSON.parse(jsonStr);
-          // Ensure additionalData exists (for backwards compatibility)
-          if (!extraction.additionalData) {
-            extraction.additionalData = [];
-          }
+          if (!extraction.additionalData) extraction.additionalData = [];
         } else {
           extraction = {
             extractedFields: [],
@@ -242,7 +208,7 @@ Only include fields/data where you found relevant information. If nothing can be
           };
         }
       } catch (e) {
-        console.error("[ProfileAgent] Failed to parse extraction response:", e);
+        console.error("[ProfileAgent] Failed to parse extraction:", e);
         extraction = {
           extractedFields: [],
           additionalData: [],
@@ -251,15 +217,160 @@ Only include fields/data where you found relevant information. If nothing can be
         };
       }
 
-      console.log("[ProfileAgent] Parsed extraction:", JSON.stringify(extraction, null, 2));
+      console.log("[ProfileAgent] Extracted fields:", extraction.extractedFields.length);
 
-      // Build the proposal with current values for comparison
-      const fieldUpdates: ProposedFieldUpdate[] = extraction.extractedFields
+      // Step 2: Score empty fields
+      const allScoredFields = scoreEmptyFields(customer);
+      console.log("[ProfileAgent] Total empty fields:", allScoredFields.length);
+
+      // Step 3: Deduplicate (remove fields covered in extraction)
+      const extractedKeys = extraction.extractedFields.map((f) => f.field);
+      const dedupedFields = deduplicateFields(allScoredFields, extractedKeys);
+
+      // Step 4: Select top fields
+      const topFields = selectTopFields(dedupedFields, 10);
+      console.log("[ProfileAgent] Top fields for nudges:", topFields.length);
+
+      // Step 5: Generate questions (if any top fields)
+      let nudges: NudgeQuestion[] = [];
+      if (topFields.length > 0) {
+        const contextSummary = extraction.noteSummary || content.slice(0, 300);
+        nudges = await generateQuestions(topFields, customer, contextSummary);
+        console.log("[ProfileAgent] Generated nudge questions:", nudges.length);
+      }
+
+      // Build result
+      const result: ExtractionWithNudges = {
+        proposalId: nanoid(),
+        customerId: customer.id,
+        extraction,
+        nudges,
+        rawInput: content,
+        source: source as "meeting" | "call" | "email" | "voice_note",
+        createdAt: new Date().toISOString(),
+      };
+
+      return JSON.stringify(result);
+    },
+    {
+      name: EXTRACT_AND_NUDGES_TOOL_NAME,
+      description: `Extract profile data from RM input and generate follow-up questions.
+
+This is Phase 1 of the two-phase workflow:
+1. Extract structured profile data from the input
+2. Identify high-value empty fields using intelligent scoring
+3. Generate conversational follow-up questions for the RM
+
+Call this tool when the RM shares meeting notes, call notes, or observations.
+The RM will see:
+- A card with follow-up questions to answer or skip
+- After answering, call finalize_proposal to show the complete proposal`,
+      schema: z.object({
+        content: z.string().describe("The meeting note or observation from the RM"),
+        source: z
+          .enum(["meeting", "call", "email", "voice_note"])
+          .default("meeting")
+          .describe("The source type"),
+      }),
+    }
+  );
+}
+
+/**
+ * Create the finalize_proposal tool.
+ * Phase 2: Merge extraction + nudge answers → ProfileUpdateProposal.
+ */
+function createFinalizeProposalTool(customer: CustomerWithNotes) {
+  return tool(
+    async ({ proposalId, extractionData, answers, rawInput, source }) => {
+      console.log("[ProfileAgent] finalize_proposal called");
+
+      // Parse extraction data
+      const extraction: Extraction = extractionData;
+
+      // Process answers through extraction LLM to map to fields
+      const processedAnswers: Array<{
+        field: string;
+        value: unknown;
+        confidence: "high" | "medium" | "low";
+        source: string;
+      }> = [];
+
+      // Filter to non-skipped answers
+      const validAnswers = answers.filter((a: NudgeAnswer) => !a.skipped && a.answer);
+
+      if (validAnswers.length > 0) {
+        const extractionModel = new ChatOpenAI({
+          model: "gpt-4o",
+          apiKey: process.env.OPENAI_API_KEY,
+          temperature: 0,
+        });
+
+        const answersText = validAnswers
+          .map((a: NudgeAnswer) => `${a.fieldKey}: "${a.answer}"`)
+          .join("\n");
+
+        const answerExtractionPrompt = `Extract structured values from these RM answers about a customer profile.
+
+## Answers
+${answersText}
+
+## Instructions
+For each answer, extract the value and map it to the field key.
+Return a JSON array:
+[
+  { "field": "fieldKey", "value": "extracted_value", "confidence": "high", "source": "RM provided" }
+]
+
+Be intelligent about parsing:
+- "50L-1Cr" for income → use as-is
+- "3 kids" for dependents → extract number 3
+- Dates should be in ISO format if possible`;
+
+        try {
+          const response = await extractionModel.invoke([
+            { role: "system", content: answerExtractionPrompt },
+            { role: "user", content: "Extract values from the answers." },
+          ]);
+
+          const responseText = typeof response.content === "string"
+            ? response.content
+            : JSON.stringify(response.content);
+
+          const jsonMatch = responseText.match(/```json\n?([\s\S]*?)\n?```/) ||
+            responseText.match(/\[[\s\S]*\]/);
+
+          if (jsonMatch) {
+            const jsonStr = jsonMatch[1] || jsonMatch[0];
+            const parsed = JSON.parse(jsonStr);
+            processedAnswers.push(...parsed);
+          }
+        } catch (e) {
+          console.error("[ProfileAgent] Failed to process answers:", e);
+          // Fallback: use raw answers
+          for (const a of validAnswers) {
+            processedAnswers.push({
+              field: a.fieldKey,
+              value: a.answer,
+              confidence: "high",
+              source: "RM provided in follow-up",
+            });
+          }
+        }
+      }
+
+      console.log("[ProfileAgent] Processed answer fields:", processedAnswers.length);
+
+      // Combine extraction fields with processed answers
+      const allExtractedFields = [
+        ...extraction.extractedFields,
+        ...processedAnswers,
+      ];
+
+      // Build field updates
+      const fieldUpdates: ProposedFieldUpdate[] = allExtractedFields
         .filter((ef) => {
           const fieldDef = getFieldDefinition(ef.field);
-          if (!fieldDef) {
-            console.log("[ProfileAgent] Skipping unknown field:", ef.field);
-          }
           return fieldDef !== undefined;
         })
         .map((ef) => {
@@ -277,7 +388,7 @@ Only include fields/data where you found relevant information. If nothing can be
           };
         });
 
-      // Build additional data items (non-schema data)
+      // Build additional data
       const additionalData: ProposedAdditionalData[] = (extraction.additionalData || [])
         .map((ad) => ({
           id: nanoid(),
@@ -289,50 +400,67 @@ Only include fields/data where you found relevant information. If nothing can be
           category: ad.category,
         }));
 
-      console.log("[ProfileAgent] Additional data items:", additionalData.length);
-
+      // Build note
       const note: ProposedNote = {
         id: nanoid(),
-        content: extraction.noteSummary || content.slice(0, 200),
+        content: extraction.noteSummary || rawInput.slice(0, 200),
         source: source as "meeting" | "call" | "email" | "voice_note",
         tags: extraction.noteTags || [],
       };
 
       const proposal: ProfileUpdateProposal = {
-        proposalId: nanoid(),
+        proposalId,
         customerId: customer.id,
         fieldUpdates,
         additionalData,
         note,
-        rawInput: content,
+        rawInput,
         createdAt: new Date().toISOString(),
       };
+
+      console.log("[ProfileAgent] Final proposal - fields:", fieldUpdates.length);
 
       return JSON.stringify(proposal);
     },
     {
-      name: PROPOSAL_TOOL_NAME,
-      description: `Extract profile updates from RM meeting notes, calls, or observations. Use this tool when the RM shares notes about a customer interaction.
+      name: FINALIZE_PROPOSAL_TOOL_NAME,
+      description: `Finalize the profile update proposal after RM has answered follow-up questions.
 
-This tool will:
-1. Extract structured profile field values from the unstructured input
-2. Compare with current profile to identify new/changed information
-3. Generate a proposal for RM to review and approve
+This is Phase 2 of the two-phase workflow:
+- Merge initial extraction with nudge answers
+- Create a complete ProfileUpdateProposal for RM approval
 
-Call this tool when the RM shares:
-- Meeting notes or summaries
-- Call notes or observations
-- Any unstructured information about the customer
-
-The RM will then see a card with proposed updates and can approve/reject each one.`,
+Call this tool after the RM has reviewed the follow-up questions.`,
       schema: z.object({
-        content: z
-          .string()
-          .describe("The meeting note, observation, or unstructured input from the RM"),
-        source: z
-          .enum(["meeting", "call", "email", "voice_note"])
-          .default("meeting")
-          .describe("The source type of this information"),
+        proposalId: z.string().describe("The proposal ID from Phase 1"),
+        extractionData: z.object({
+          extractedFields: z.array(z.object({
+            field: z.string(),
+            value: z.unknown(),
+            confidence: z.enum(["high", "medium", "low"]),
+            source: z.string(),
+          })),
+          additionalData: z.array(z.object({
+            key: z.string(),
+            label: z.string(),
+            value: z.unknown(),
+            confidence: z.enum(["high", "medium", "low"]),
+            source: z.string(),
+            category: z.string().optional(),
+          })),
+          noteSummary: z.string(),
+          noteTags: z.array(z.string()),
+        }).describe("The extraction data from Phase 1"),
+        answers: z.array(
+          z.object({
+            questionId: z.string(),
+            fieldKey: z.string(),
+            answer: z.string().nullable(),
+            skipped: z.boolean(),
+          })
+        ).describe("RM's answers to nudge questions"),
+        rawInput: z.string().describe("Original raw input from RM"),
+        source: z.enum(["meeting", "call", "email", "voice_note"]).describe("Source type"),
       }),
     }
   );
@@ -363,12 +491,13 @@ export async function runProfileAgent(options: ProfileAgentOptions) {
   // Create tools with customer context
   // Note: get_customer_profile fetches fresh data from DB each time
   const getCustomerProfileTool = createGetCustomerProfileTool(options.customer.id);
-  const proposeProfileUpdatesTool = createProposeProfileUpdatesTool(options.customer);
+  const extractAndNudgesTool = createExtractAndGenerateNudgesTool(options.customer);
+  const finalizeProposalTool = createFinalizeProposalTool(options.customer);
 
   console.log("[ProfileAgent] Creating agent with tools...");
   const agent = createAgent({
     model,
-    tools: [getCustomerProfileTool, proposeProfileUpdatesTool],
+    tools: [getCustomerProfileTool, extractAndNudgesTool, finalizeProposalTool],
     checkpointer,
     systemPrompt,
   });
@@ -391,38 +520,47 @@ export async function runProfileAgent(options: ProfileAgentOptions) {
  * Build the system prompt with customer profile context.
  */
 function buildSystemPrompt(customer: CustomerWithNotes): string {
-  const profileSummary = formatProfileForPrompt(customer);
   const notesSummary = formatNotesForPrompt(customer.notes);
   const missingFields = getMissingHighPriorityFields(customer);
 
   return `You are a Profile Agent for Samar Capital, a wealth management firm. You help Relationship Managers (RMs) capture and manage customer profiles through natural conversation.
 
 ## Your Primary Role
-When an RM shares meeting notes, call notes, or observations about a customer:
-1. FIRST call \`get_customer_profile\` to fetch the latest customer data from the database
-2. THEN use the \`propose_profile_updates\` tool to extract structured profile data
-3. The RM will see a card with proposed field updates and can approve/reject each one
-4. NEVER auto-save data - always propose changes for RM confirmation
+When an RM shares meeting notes, call notes, or observations about a customer, use the TWO-PHASE workflow:
+
+### Phase 1: Extract and Generate Follow-ups
+1. FIRST call \`get_customer_profile\` to fetch the latest customer data
+2. THEN call \`extract_and_generate_nudges\` to:
+   - Extract structured data from the input
+   - Generate follow-up questions for high-value missing fields
+3. The RM will see a card with follow-up questions to answer or skip
+
+### Phase 2: Finalize Proposal
+4. After the RM answers/skips questions, they will submit answers
+5. Call \`finalize_proposal\` with the extraction data and answers
+6. The RM will see the complete ProfileUpdateProposal to approve/reject
+7. NEVER auto-save data - always propose changes for RM confirmation
 
 ## Tools Available
 
 ### \`get_customer_profile\`
-**CRITICAL: Always call this tool FIRST before proposing any profile updates.**
-
-This tool fetches the latest customer data from the database. Use it:
-- ALWAYS before calling \`propose_profile_updates\` (to ensure you have fresh data)
+Fetch the latest customer data from the database. Use it:
+- ALWAYS before processing RM notes (to ensure fresh data)
 - When the RM asks about specific customer information
-- When you need to check details about a section (goals, income, risk, preferences, etc.)
-- When you want to provide accurate data in your responses
+- When you need to check details about any section
 
-### \`propose_profile_updates\`
-Use this tool when the RM shares:
-- Meeting notes or summaries (e.g., "Just met with the client...")
-- Call notes (e.g., "Had a call today...")
-- Observations about the customer
-- Any unstructured text containing customer information
+### \`extract_and_generate_nudges\`
+**Phase 1 tool.** Use when the RM shares meeting notes, call notes, or observations.
+- Extracts structured profile data from the input
+- Identifies high-value missing fields using intelligent scoring
+- Generates conversational follow-up questions
+- Returns extraction data + nudge questions for the RM
 
-**IMPORTANT**: Always call \`get_customer_profile\` BEFORE this tool to ensure you have the most up-to-date data.
+### \`finalize_proposal\`
+**Phase 2 tool.** Use after the RM has answered or skipped follow-up questions.
+- Takes the original extraction + RM's answers
+- Merges everything into a complete ProfileUpdateProposal
+- Returns the proposal for RM to approve/reject
 
 ## Current Customer Context
 Customer: ${customer.fullName || "Unknown"}
@@ -434,12 +572,12 @@ ${missingFields.map((f) => `- ${f}`).join("\n")}
 ${notesSummary}
 
 ## Guidelines
-- **ALWAYS fetch fresh profile data via \`get_customer_profile\` before proposing updates**
-- The workflow for processing notes is: get_customer_profile → propose_profile_updates
-- For questions about the customer, use get_customer_profile first
+- **ALWAYS fetch fresh profile data first** via \`get_customer_profile\`
+- **Use the two-phase workflow** for processing notes:
+  1. get_customer_profile → extract_and_generate_nudges → RM answers questions
+  2. finalize_proposal → RM approves updates
 - Be conversational and helpful
 - Acknowledge when information is missing or incomplete
-- Focus on high-priority fields first when extracting data
 - NEVER modify the profile directly - always propose updates for RM approval`;
 }
 
