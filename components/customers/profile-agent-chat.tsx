@@ -14,8 +14,9 @@ import {
   PROPOSAL_TOOL_NAME,
   isProfileUpdateProposal,
 } from "@/lib/crm/extraction-types";
-import { NudgesCard } from "./nudges";
-import { ProposalCard } from "./proposal-card";
+// json-render based components
+import { NudgesCard } from "./json-render-nudges-card";
+import { ProposalCard } from "./json-render-proposal-card";
 import {
   MessageList,
   ChatInput,

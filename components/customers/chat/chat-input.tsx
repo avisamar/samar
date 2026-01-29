@@ -18,7 +18,7 @@ interface ChatInputProps {
 export function ChatInput({
   onSubmit,
   isLoading,
-  placeholder = "Ask about this customer's profile, goals, or preferences...",
+  placeholder = "Start typing or tap mic to record your notes...",
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 

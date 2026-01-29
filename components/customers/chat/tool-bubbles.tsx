@@ -8,7 +8,7 @@ import {
   PROPOSAL_TOOL_NAME,
   isProfileUpdateProposal,
 } from "@/lib/crm/extraction-types";
-import { ProposalCard } from "../proposal-card";
+import { ProposalCard } from "../json-render-proposal-card";
 import type { Message } from "./types";
 
 /**

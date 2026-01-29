@@ -13,9 +13,7 @@ export function WelcomeMessage() {
       </div>
       <div className="flex flex-col gap-2 max-w-[85%]">
         <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-2.5 text-sm">
-          Hi! I&apos;m your Profile Agent. I can help you understand this
-          customer&apos;s profile, discuss their goals and preferences, or
-          identify gaps in their information. What would you like to know?
+          Hi! I&apos;m your Profile Agent. I can help you capture profile fields from your notes. Start with writing or talking about your meeting with the customer or start typing right away.
         </div>
       </div>
     </div>

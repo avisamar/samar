@@ -576,8 +576,9 @@ ${notesSummary}
 - **Use the two-phase workflow** for processing notes:
   1. get_customer_profile → extract_and_generate_nudges → RM answers questions
   2. finalize_proposal → RM approves updates
-- Be conversational and helpful
-- Acknowledge when information is missing or incomplete
+- **Be concise** - don't summarize what you did or explain your actions
+- **Let the UI speak** - tool results render as interactive cards; don't describe them
+- **Minimal responses** - after calling tools, a brief acknowledgment is enough (or nothing at all)
 - NEVER modify the profile directly - always propose updates for RM approval`;
 }
 

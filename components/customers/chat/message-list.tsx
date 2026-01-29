@@ -25,6 +25,40 @@ function isFinalizeProposalMessage(content: string): boolean {
 }
 
 /**
+ * Check if content looks like raw JSON extraction/tool data that shouldn't be shown.
+ * This filters out streamed JSON that will be rendered as a proper UI card.
+ */
+function isRawJsonContent(content: string): boolean {
+  const trimmed = content.trim();
+
+  // Check if it starts with { or [ (JSON) - hide all JSON-like AI responses
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return true;
+  }
+
+  // Also check for partial JSON that might be streaming (starts with quotes or field patterns)
+  if (trimmed.startsWith('"') && trimmed.includes('":')) {
+    return true;
+  }
+
+  // Check for extraction-related keys anywhere in content
+  const extractionKeys = [
+    '"extractedFields"',
+    '"additionalData"',
+    '"noteSummary"',
+    '"fieldKey"',
+    '"proposalId"',
+    '"fieldUpdates"',
+    '"nudges"',
+    '"extraction"',
+    '"field"',
+    '"confidence"',
+    '"source"',
+  ];
+  return extractionKeys.some((key) => content.includes(key));
+}
+
+/**
  * Parse the finalize proposal message and extract summary info.
  */
 function parseFinalizeMessage(content: string): { answered: number; skipped: number } | null {
@@ -138,6 +172,9 @@ function MessageBubble({
 
   // Skip empty messages (no content and no tool calls)
   if (!content && toolCalls.length === 0) return null;
+
+  // Skip AI messages that are just raw JSON (will be rendered as tool result UI)
+  if (isAI && isRawJsonContent(content)) return null;
 
   // Handle finalize proposal message - show summary instead of JSON blob
   if (isUser && isFinalizeProposalMessage(content)) {

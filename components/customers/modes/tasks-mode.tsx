@@ -312,7 +312,7 @@ function AddTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="p-4">
         <DialogHeader>
           <DialogTitle>Add Task</DialogTitle>
         </DialogHeader>
