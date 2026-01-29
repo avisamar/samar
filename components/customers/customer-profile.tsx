@@ -1,68 +1,53 @@
 "use client";
 
 import { Suspense } from "react";
-import Link from "next/link";
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import type { CustomerWithNotes } from "@/lib/crm/types";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ProfileHero } from "./profile-hero";
-import { ProfileSidebar } from "./profile-sidebar";
-import { ProfileTabs } from "./profile-tabs";
+import { IdentityBar } from "./identity-bar";
+import { ModeNavigation, getModeFromUrl, type ModeId } from "./mode-navigation";
+import { ModeContent } from "./mode-content";
 
 interface CustomerProfileProps {
   customer: CustomerWithNotes;
+  initialMode?: string;
 }
 
-export function CustomerProfile({ customer }: CustomerProfileProps) {
+export function CustomerProfile({ customer, initialMode }: CustomerProfileProps) {
+  const searchParams = useSearchParams();
+
+  // Get current mode from URL, fallback to initialMode or "overview"
+  const currentMode = getModeFromUrl(searchParams) ||
+    (isValidMode(initialMode) ? initialMode : "overview");
+
   return (
-    <div className="h-screen flex overflow-hidden">
-      {/* Left Container: Header + Hero + Profile Sidebar */}
-      <div className="w-1/3 min-w-[320px] max-w-[420px] h-full flex flex-col bg-surface-inset overflow-y-auto pt-4">
-        {/* Header */}
-        <div className="flex items-center gap-2 px-6 py-3">
-          <Link
-            href="/customers"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="size-4" />
-            <span>Back to Customers</span>
-          </Link>
-        </div>
+    <div className="h-screen flex flex-col overflow-hidden bg-background">
+      {/* Sticky Identity Bar */}
+      <IdentityBar customer={customer} />
 
-        {/* Hero Section */}
-        <div className="px-6 pb-4">
-          <ProfileHero customer={customer} />
-        </div>
+      {/* Mode Navigation */}
+      <ModeNavigation currentMode={currentMode} />
 
-        {/* Profile Sidebar */}
-        <div className="pb-6">
-          <ProfileSidebar customer={customer} />
-        </div>
-      </div>
+      {/* Mode Content Area */}
+      <Suspense fallback={<ContentLoading />}>
+        <ModeContent mode={currentMode} customer={customer} />
+      </Suspense>
+    </div>
+  );
+}
 
-      {/* Right Container: Workspace with Tabs */}
-      <div className="flex-1 h-full flex flex-col border-l overflow-hidden pl-4 pt-4">
-        {/* Tabs Panel - fills remaining height */}
-        <div className="flex-1 min-h-0">
-          <Suspense fallback={<TabsLoading />}>
-            <ProfileTabs customerId={customer.id} />
-          </Suspense>
-        </div>
+function ContentLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        <span>Loading...</span>
       </div>
     </div>
   );
 }
 
-function TabsLoading() {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-sm text-muted-foreground">Loading...</div>
-    </div>
-  );
+function isValidMode(mode?: string): mode is ModeId {
+  const validModes: ModeId[] = ["overview", "capture", "timeline", "tasks", "profile"];
+  return !!mode && validModes.includes(mode as ModeId);
 }

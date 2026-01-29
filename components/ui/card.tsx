@@ -2,16 +2,34 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+export type CardVariant = "default" | "attention" | "success" | "warning"
+
+const cardVariantStyles: Record<CardVariant, string> = {
+  default: "ring-foreground/10",
+  attention: "ring-primary/30 border-l-4 border-l-primary",
+  success: "ring-green-500/20 bg-green-50/50 dark:bg-green-950/20",
+  warning: "ring-amber-500/20 bg-amber-50/50 dark:bg-amber-950/20",
+}
+
 function Card({
   className,
   size = "default",
+  variant = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & {
+  size?: "default" | "sm"
+  variant?: CardVariant
+}) {
   return (
     <div
       data-slot="card"
       data-size={size}
-      className={cn("ring-foreground/10 bg-card text-card-foreground gap-4 overflow-hidden rounded-xl py-4 text-sm ring-1 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl group/card flex flex-col", className)}
+      data-variant={variant}
+      className={cn(
+        "bg-card text-card-foreground gap-4 overflow-hidden rounded-xl py-4 text-sm ring-1 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl group/card flex flex-col",
+        cardVariantStyles[variant],
+        className
+      )}
       {...props}
     />
   )

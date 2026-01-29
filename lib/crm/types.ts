@@ -20,7 +20,10 @@ export interface ListOptions {
 }
 
 // Note creation input (without customerId, which is passed separately)
-export type NoteInput = Omit<NewCustomerNote, "customerId" | "id" | "createdAt">;
+// createdAt is optional - if not provided, defaults to current time
+export type NoteInput = Omit<NewCustomerNote, "customerId" | "id" | "createdAt"> & {
+  createdAt?: Date;
+};
 
 // Partial update for profile fields
 export type CustomerProfileUpdate = Partial<

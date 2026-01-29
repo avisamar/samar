@@ -34,27 +34,27 @@ export function ProfileSection({
   const completeness = calculateSectionCompleteness(customer, section);
 
   return (
-    <div className="mb-1">
+    <div>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between py-1.5 hover:bg-muted/30 rounded transition-colors"
+        className="flex w-full items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
       >
         <div className="flex items-center gap-2">
           {isOpen ? (
-            <ChevronDown className="size-3.5 text-muted-foreground" />
+            <ChevronDown className="size-4 text-muted-foreground" />
           ) : (
-            <ChevronRight className="size-3.5 text-muted-foreground" />
+            <ChevronRight className="size-4 text-muted-foreground" />
           )}
           <span className="text-sm font-medium">{section.label}</span>
         </div>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {completeness.filled}/{completeness.total}
                 </span>
-                <div className="h-1.5 w-12 bg-muted rounded-full overflow-hidden">
+                <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
@@ -73,8 +73,8 @@ export function ProfileSection({
       </button>
 
       {isOpen && (
-        <div className="pb-2 pt-1 pl-5">
-          <div className="grid gap-y-0.5">
+        <div className="px-4 pb-4 pt-1">
+          <div className="space-y-1 pl-6">
             {section.fields.map((field) => (
               <FieldRow
                 key={field.key}
@@ -111,21 +111,21 @@ function FieldRow({ field, customer, onEdit }: FieldRowProps) {
   return (
     <button
       onClick={onEdit}
-      className="group flex items-start gap-2 py-1 text-sm w-full text-left rounded-sm transition-colors hover:bg-muted/50 cursor-pointer"
+      className="group flex items-baseline gap-3 py-1.5 text-sm w-full text-left rounded transition-colors hover:bg-muted/50 cursor-pointer -mx-2 px-2"
     >
-      <span className="text-muted-foreground text-xs min-w-[100px] pt-0.5 group-hover:text-foreground transition-colors">
+      <span className="text-muted-foreground text-xs min-w-[130px] shrink-0 group-hover:text-foreground transition-colors">
         {field.label}
       </span>
       <span
         className={cn(
-          "flex-1",
+          "flex-1 text-sm",
           isEmpty && "text-muted-foreground/50",
           "group-hover:text-foreground transition-colors"
         )}
       >
         {displayValue ?? "—"}
       </span>
-      <Pencil className="size-3 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors shrink-0 mt-0.5" />
+      <Pencil className="size-3 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors shrink-0 self-center" />
     </button>
   );
 }

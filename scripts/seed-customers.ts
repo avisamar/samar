@@ -206,10 +206,17 @@ async function seed() {
       const customer = await crmRepository.createCustomer(customerData);
       results[completeness]++;
 
-      // Add notes based on completeness
+      // Add notes based on completeness (with staggered timestamps)
       for (let j = 0; j < noteCount; j++) {
         const note = sampleNotes[j % sampleNotes.length];
-        await crmRepository.addNote(customer.id, note);
+        // Stagger notes: first note is oldest (weeks ago), later notes are more recent
+        const daysAgo = (noteCount - j) * 7 + Math.floor(Math.random() * 5);
+        const hoursOffset = Math.floor(Math.random() * 8) + 9; // 9am-5pm
+        const minutesOffset = Math.floor(Math.random() * 60);
+        const noteDate = new Date();
+        noteDate.setDate(noteDate.getDate() - daysAgo);
+        noteDate.setHours(hoursOffset, minutesOffset, 0, 0);
+        await crmRepository.addNote(customer.id, { ...note, createdAt: noteDate });
       }
 
       const fieldCount = Object.keys(customerData).filter(k => customerData[k as keyof typeof customerData] !== undefined).length;
