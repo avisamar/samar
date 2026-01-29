@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
 
@@ -38,6 +40,18 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { setOpen } = useSidebar();
+
+  // Auto-collapse sidebar on customer profile pages, expand on customers list
+  useEffect(() => {
+    const isCustomerProfile = pathname.startsWith("/customers/") && pathname.length > "/customers/".length;
+
+    if (isCustomerProfile) {
+      setOpen(false);
+    } else if (pathname === "/customers") {
+      setOpen(true);
+    }
+  }, [pathname, setOpen]);
 
   async function handleLogout() {
     await authClient.signOut();
