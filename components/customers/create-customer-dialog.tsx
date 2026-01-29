@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { validatePhoneNumber, validateEmail } from "@/lib/validation";
 
 interface CreateCustomerDialogProps {
   open: boolean;
@@ -32,6 +33,8 @@ export function CreateCustomerDialog({
   const [primaryMobile, setPrimaryMobile] = useState("");
   const [emailPrimary, setEmailPrimary] = useState("");
   const [cityOfResidence, setCityOfResidence] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const resetForm = () => {
     setFullName("");
@@ -39,6 +42,28 @@ export function CreateCustomerDialog({
     setEmailPrimary("");
     setCityOfResidence("");
     setError(null);
+    setPhoneError(null);
+    setEmailError(null);
+  };
+
+  const validatePhone = () => {
+    if (!primaryMobile.trim()) {
+      setPhoneError(null);
+      return true;
+    }
+    const result = validatePhoneNumber(primaryMobile);
+    setPhoneError(result.valid ? null : result.error || "Invalid phone number");
+    return result.valid;
+  };
+
+  const validateEmailField = () => {
+    if (!emailPrimary.trim()) {
+      setEmailError(null);
+      return true;
+    }
+    const result = validateEmail(emailPrimary);
+    setEmailError(result.valid ? null : result.error || "Invalid email");
+    return result.valid;
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -48,7 +73,11 @@ export function CreateCustomerDialog({
     onOpenChange(newOpen);
   };
 
-  const isValid = fullName.trim() !== "" && primaryMobile.trim() !== "";
+  const isValid =
+    fullName.trim() !== "" &&
+    primaryMobile.trim() !== "" &&
+    !phoneError &&
+    !emailError;
 
   const handleCreate = () => {
     if (!isValid) return;
@@ -114,10 +143,18 @@ export function CreateCustomerDialog({
             <Input
               id="primaryMobile"
               value={primaryMobile}
-              onChange={(e) => setPrimaryMobile(e.target.value)}
+              onChange={(e) => {
+                setPrimaryMobile(e.target.value);
+                if (phoneError) setPhoneError(null);
+              }}
+              onBlur={validatePhone}
               placeholder="+91 98765 43210"
               type="tel"
+              aria-invalid={!!phoneError}
             />
+            {phoneError && (
+              <p className="text-destructive text-xs">{phoneError}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -127,10 +164,18 @@ export function CreateCustomerDialog({
             <Input
               id="emailPrimary"
               value={emailPrimary}
-              onChange={(e) => setEmailPrimary(e.target.value)}
+              onChange={(e) => {
+                setEmailPrimary(e.target.value);
+                if (emailError) setEmailError(null);
+              }}
+              onBlur={validateEmailField}
               placeholder="customer@example.com"
               type="email"
+              aria-invalid={!!emailError}
             />
+            {emailError && (
+              <p className="text-destructive text-xs">{emailError}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">

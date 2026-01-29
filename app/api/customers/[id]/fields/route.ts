@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { crmRepository } from "@/lib/crm";
+import { validateContactField } from "@/lib/validation";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -37,9 +38,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Validate contact fields (phone/email)
+    let finalValue = value;
+    const contactValidation = validateContactField(field, value);
+    if (contactValidation !== null) {
+      if (!contactValidation.valid) {
+        return NextResponse.json(
+          { error: contactValidation.error || "Invalid value" },
+          { status: 400 }
+        );
+      }
+      finalValue = contactValidation.value;
+    }
+
     // Update the field
     const updatedCustomer = await crmRepository.updateProfileFields(id, {
-      [field]: value,
+      [field]: finalValue,
     });
 
     if (!updatedCustomer) {

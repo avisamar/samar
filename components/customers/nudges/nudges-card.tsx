@@ -43,24 +43,6 @@ export function NudgesCard({ extraction, onFinalize, submitted = false }: Nudges
     }));
   }, []);
 
-  const handleSkipAll = useCallback(() => {
-    setIsSubmitting(true);
-    // Mark all unanswered questions as skipped
-    const allAnswers = extraction.nudges.map((q) => {
-      if (answers[q.id]) {
-        return answers[q.id];
-      }
-      return {
-        questionId: q.id,
-        fieldKey: q.fieldKey,
-        answer: null,
-        skipped: true,
-      };
-    });
-    onFinalize(allAnswers);
-    setLocalSubmitted(true);
-  }, [extraction.nudges, answers, onFinalize]);
-
   const handleContinue = useCallback(() => {
     setIsSubmitting(true);
     // Convert answers to array, marking unanswered as skipped
@@ -84,7 +66,29 @@ export function NudgesCard({ extraction, onFinalize, submitted = false }: Nudges
     return Object.values(answers).filter((a) => !a.skipped && a.answer).length;
   }, [answers]);
 
+  const skippedCount = useMemo(() => {
+    return Object.values(answers).filter((a) => a.skipped).length;
+  }, [answers]);
+
   const totalCount = extraction.nudges.length;
+  const remainingCount = totalCount - answeredCount - skippedCount;
+
+  // Dynamic button label based on current state
+  const getButtonLabel = useCallback(() => {
+    if (answeredCount === 0 && skippedCount === 0) {
+      return "Skip All Questions";
+    }
+    if (answeredCount === totalCount) {
+      return "Submit Answers";
+    }
+    if (answeredCount === 0 && skippedCount === totalCount) {
+      return "Continue Without Answers";
+    }
+    if (remainingCount > 0) {
+      return `Submit, Skip ${remainingCount} Remaining`;
+    }
+    return "Submit Answers";
+  }, [answeredCount, skippedCount, totalCount, remainingCount]);
 
   // If no nudges, don't render the card
   if (extraction.nudges.length === 0) {
@@ -122,7 +126,7 @@ export function NudgesCard({ extraction, onFinalize, submitted = false }: Nudges
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="font-medium">Quick Follow-ups</span>
-              <ProgressIndicator current={answeredCount} total={totalCount} />
+              <ProgressIndicator answered={answeredCount} skipped={skippedCount} total={totalCount} />
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -143,17 +147,10 @@ export function NudgesCard({ extraction, onFinalize, submitted = false }: Nudges
           ))}
         </CardContent>
 
-        <CardFooter className="border-t pt-3 flex justify-between gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSkipAll}
-            disabled={isSubmitting}
-          >
-            Skip All & Continue
-          </Button>
+        <CardFooter className="border-t pt-3 flex justify-end">
           <Button
             size="sm"
+            variant={answeredCount > 0 ? "default" : "outline"}
             onClick={handleContinue}
             disabled={isSubmitting}
           >
@@ -161,7 +158,7 @@ export function NudgesCard({ extraction, onFinalize, submitted = false }: Nudges
               "Processing..."
             ) : (
               <>
-                Continue
+                {getButtonLabel()}
                 <ChevronRight className="size-4 ml-1" />
               </>
             )}

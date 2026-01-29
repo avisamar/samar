@@ -227,8 +227,8 @@ Return a JSON object:
       const extractedKeys = extraction.extractedFields.map((f) => f.field);
       const dedupedFields = deduplicateFields(allScoredFields, extractedKeys);
 
-      // Step 4: Select top fields
-      const topFields = selectTopFields(dedupedFields, 10);
+      // Step 4: Select top fields (limited to 3 follow-up questions)
+      const topFields = selectTopFields(dedupedFields, 3);
       console.log("[ProfileAgent] Top fields for nudges:", topFields.length);
 
       // Step 5: Generate questions (if any top fields)

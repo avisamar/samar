@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ProposedFieldUpdate } from "@/lib/crm/extraction-types";
+import { validateContactField, isContactField } from "@/lib/validation";
 
 interface FieldUpdateCardProps {
   field: ProposedFieldUpdate;
@@ -25,14 +26,25 @@ export function FieldUpdateCard({
 }: FieldUpdateCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editInput, setEditInput] = useState(String(field.proposedValue));
+  const [editError, setEditError] = useState<string | null>(null);
 
   const handleSaveEdit = () => {
+    // Validate contact fields before saving
+    if (isContactField(field.field)) {
+      const result = validateContactField(field.field, editInput);
+      if (result && !result.valid) {
+        setEditError(result.error || "Invalid value");
+        return;
+      }
+    }
+    setEditError(null);
     onEdit(editInput);
     setIsEditing(false);
   };
 
   const handleCancelEdit = () => {
     setEditInput(String(editedValue ?? field.proposedValue));
+    setEditError(null);
     setIsEditing(false);
   };
 
@@ -82,19 +94,28 @@ export function FieldUpdateCard({
         <span className="text-muted-foreground line-through">{currentDisplay}</span>
         <ArrowRight className="size-3 text-muted-foreground" />
         {isEditing ? (
-          <div className="flex items-center gap-2 flex-1">
-            <Input
-              value={editInput}
-              onChange={(e) => setEditInput(e.target.value)}
-              className="h-7 text-sm"
-              autoFocus
-            />
-            <Button size="sm" variant="ghost" onClick={handleSaveEdit} className="h-7 px-2">
-              <Check className="size-3" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2">
-              <X className="size-3" />
-            </Button>
+          <div className="flex flex-col gap-1 flex-1">
+            <div className="flex items-center gap-2">
+              <Input
+                value={editInput}
+                onChange={(e) => {
+                  setEditInput(e.target.value);
+                  if (editError) setEditError(null);
+                }}
+                className="h-7 text-sm"
+                autoFocus
+                aria-invalid={!!editError}
+              />
+              <Button size="sm" variant="ghost" onClick={handleSaveEdit} className="h-7 px-2">
+                <Check className="size-3" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2">
+                <X className="size-3" />
+              </Button>
+            </div>
+            {editError && (
+              <p className="text-destructive text-xs">{editError}</p>
+            )}
           </div>
         ) : (
           <span className="font-medium">{proposedDisplay}</span>

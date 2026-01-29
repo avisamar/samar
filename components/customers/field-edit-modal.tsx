@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import type { Customer } from "@/lib/crm/types";
 import type { FieldDefinition } from "@/lib/crm/sections";
 import { getFieldOptions } from "@/lib/crm/field-options";
+import { validateContactField, isContactField } from "@/lib/validation";
 
 interface FieldEditModalProps {
   open: boolean;
@@ -61,12 +62,14 @@ export function FieldEditModal({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Initialize value when field changes
   useEffect(() => {
     if (field) {
       const currentValue = customer[field.key] as FieldValue;
       setValue(currentValue ?? null);
+      setValidationError(null);
     }
   }, [field, customer]);
 
@@ -77,9 +80,27 @@ export function FieldEditModal({
   const hasChanged = JSON.stringify(value) !== JSON.stringify(currentValue ?? null);
   const enumOptions = getFieldOptions(field.key as string);
 
+  const validateValue = (): boolean => {
+    if (!field) return true;
+
+    const fieldKey = field.key as string;
+    if (!isContactField(fieldKey)) return true;
+
+    const result = validateContactField(fieldKey, value);
+    if (result && !result.valid) {
+      setValidationError(result.error || "Invalid value");
+      return false;
+    }
+    setValidationError(null);
+    return true;
+  };
+
   const handleSave = () => {
     if (!hasChanged) {
       onOpenChange(false);
+      return;
+    }
+    if (!validateValue()) {
       return;
     }
     setShowConfirmation(true);
@@ -293,11 +314,25 @@ export function FieldEditModal({
           field.key.toString().includes("notes") ||
           field.key.toString().includes("summary");
 
+        const fieldKey = field.key as string;
+        const needsValidation = isContactField(fieldKey);
+
+        const handleBlur = () => {
+          if (needsValidation) {
+            validateValue();
+          }
+        };
+
+        const handleChange = (newValue: string) => {
+          setValue(newValue);
+          if (validationError) setValidationError(null);
+        };
+
         if (isLongText) {
           return (
             <Textarea
               value={value as string ?? ""}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => handleChange(e.target.value)}
               placeholder={`Enter ${field.label.toLowerCase()}`}
               rows={4}
             />
@@ -307,8 +342,10 @@ export function FieldEditModal({
         return (
           <Input
             value={value as string ?? ""}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
+            onBlur={handleBlur}
             placeholder={`Enter ${field.label.toLowerCase()}`}
+            aria-invalid={!!validationError}
           />
         );
     }
@@ -347,6 +384,9 @@ export function FieldEditModal({
                 New Value
               </Label>
               {renderInput()}
+              {validationError && (
+                <p className="text-destructive text-xs">{validationError}</p>
+              )}
             </div>
 
             {/* Error Display */}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { crmRepository } from "@/lib/crm";
+import { validatePhoneNumber, validateEmail } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,11 +23,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the customer
+    // Validate and normalize phone number
+    const phoneValidation = validatePhoneNumber(primaryMobile);
+    if (!phoneValidation.valid) {
+      return NextResponse.json(
+        { error: phoneValidation.error || "Invalid phone number" },
+        { status: 400 }
+      );
+    }
+
+    // Validate email if provided
+    if (emailPrimary) {
+      const emailValidation = validateEmail(emailPrimary);
+      if (!emailValidation.valid) {
+        return NextResponse.json(
+          { error: emailValidation.error || "Invalid email" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Create the customer with normalized values
+    const normalizedPhone = validatePhoneNumber(primaryMobile).value as string;
+    const normalizedEmail = emailPrimary
+      ? (validateEmail(emailPrimary).value as string | null)
+      : null;
+
     const customer = await crmRepository.createCustomer({
       fullName: fullName.trim(),
-      emailPrimary: emailPrimary?.trim() || null,
-      primaryMobile: primaryMobile.trim(),
+      emailPrimary: normalizedEmail,
+      primaryMobile: normalizedPhone,
       cityOfResidence: cityOfResidence?.trim() || null,
     });
 

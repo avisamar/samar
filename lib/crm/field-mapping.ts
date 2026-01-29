@@ -4,6 +4,7 @@
  */
 
 import { PROFILE_SECTIONS, type FieldDefinition } from "./sections";
+import { validateContactField } from "@/lib/validation";
 import type { Customer } from "./types";
 
 /** All field definitions flattened from sections */
@@ -63,6 +64,12 @@ export function validateFieldValue(
   // Null/undefined is always valid (means "not set")
   if (value === null || value === undefined || value === "") {
     return { valid: true, value: null };
+  }
+
+  // Check if this is a contact field (phone/email) that needs special validation
+  const contactValidation = validateContactField(key, value);
+  if (contactValidation !== null) {
+    return contactValidation;
   }
 
   switch (field.type) {
