@@ -3,6 +3,7 @@
  */
 
 import type { Customer } from "../types";
+import type { ExtractedInterest } from "../interest-types";
 
 /**
  * A scored field for nudge selection.
@@ -83,6 +84,8 @@ export interface ExtractionWithNudges {
   customerId: string;
   extraction: Extraction;
   nudges: NudgeQuestion[];
+  /** Extracted interests from interest agents */
+  extractedInterests?: ExtractedInterest[];
   rawInput: string;
   source: "meeting" | "call" | "email" | "voice_note";
   createdAt: string;

@@ -32,6 +32,19 @@ import {
   type ProposedAdditionalData,
 } from "./extraction-types";
 import { crmRepository } from "./repository";
+import { artifactRepository } from "./artifact-repository";
+import {
+  ARTIFACT_TYPES,
+  CREATOR_TYPES,
+  type CreateProfileEditInput,
+  type CreateInterestProposalInput,
+} from "./artifact-types";
+import type { ExtractedInterest } from "./interest-types";
+import {
+  createExtractPersonalInterestsTool,
+  createExtractFinancialInterestsTool,
+  mergeInterestResults,
+} from "./interest-agents";
 
 const checkpointer = new MemorySaver();
 
@@ -219,19 +232,46 @@ Return a JSON object:
 
       console.log("[ProfileAgent] Extracted fields:", extraction.extractedFields.length);
 
-      // Step 2: Score empty fields
+      // Step 2: Extract interests in parallel using interest agents
+      const personalInterestsTool = createExtractPersonalInterestsTool();
+      const financialInterestsTool = createExtractFinancialInterestsTool();
+
+      let extractedInterests: ExtractedInterest[] = [];
+      try {
+        const [personalResult, financialResult] = await Promise.all([
+          personalInterestsTool.invoke({
+            content,
+            customerName: customer.fullName || undefined,
+          }),
+          financialInterestsTool.invoke({
+            content,
+            customerName: customer.fullName || undefined,
+          }),
+        ]);
+
+        const personalInterests: ExtractedInterest[] = JSON.parse(personalResult);
+        const financialInterests: ExtractedInterest[] = JSON.parse(financialResult);
+
+        extractedInterests = mergeInterestResults(personalInterests, financialInterests);
+        console.log("[ProfileAgent] Extracted interests:", extractedInterests.length);
+      } catch (e) {
+        console.error("[ProfileAgent] Failed to extract interests:", e);
+        // Continue without interests - don't block the main extraction
+      }
+
+      // Step 3: Score empty fields
       const allScoredFields = scoreEmptyFields(customer);
       console.log("[ProfileAgent] Total empty fields:", allScoredFields.length);
 
-      // Step 3: Deduplicate (remove fields covered in extraction)
+      // Step 4: Deduplicate (remove fields covered in extraction)
       const extractedKeys = extraction.extractedFields.map((f) => f.field);
       const dedupedFields = deduplicateFields(allScoredFields, extractedKeys);
 
-      // Step 4: Select top fields (limited to 3 follow-up questions)
+      // Step 5: Select top fields (limited to 3 follow-up questions)
       const topFields = selectTopFields(dedupedFields, 3);
       console.log("[ProfileAgent] Top fields for nudges:", topFields.length);
 
-      // Step 5: Generate questions (if any top fields)
+      // Step 6: Generate questions (if any top fields)
       let nudges: NudgeQuestion[] = [];
       if (topFields.length > 0) {
         const contextSummary = extraction.noteSummary || content.slice(0, 300);
@@ -239,12 +279,50 @@ Return a JSON object:
         console.log("[ProfileAgent] Generated nudge questions:", nudges.length);
       }
 
+      // Generate proposalId for this batch
+      const proposalId = nanoid();
+
+      // Step 7: Create interest artifacts immediately (don't wait for finalize_proposal)
+      const interestsWithArtifacts: Array<ExtractedInterest & { artifactId?: string }> = [];
+      if (extractedInterests.length > 0) {
+        const interestArtifactInputs: CreateInterestProposalInput[] = extractedInterests.map((interest) => ({
+          customerId: customer.id,
+          batchId: proposalId,
+          createdByType: CREATOR_TYPES.AGENT,
+          payload: {
+            category: interest.category,
+            label: interest.label,
+            description: interest.description,
+            source_text: interest.sourceText,
+            confidence: interest.confidence,
+          },
+        }));
+
+        try {
+          const interestArtifacts = await artifactRepository.createInterestProposalBatch(interestArtifactInputs);
+          console.log("[ProfileAgent] Created interest artifacts:", interestArtifacts.length);
+
+          // Map artifact IDs back to interests
+          for (let i = 0; i < extractedInterests.length; i++) {
+            interestsWithArtifacts.push({
+              ...extractedInterests[i],
+              artifactId: interestArtifacts[i].id,
+            });
+          }
+        } catch (error) {
+          console.error("[ProfileAgent] Failed to create interest artifacts:", error);
+          // Continue without artifacts
+          interestsWithArtifacts.push(...extractedInterests);
+        }
+      }
+
       // Build result
       const result: ExtractionWithNudges = {
-        proposalId: nanoid(),
+        proposalId,
         customerId: customer.id,
         extraction,
         nudges,
+        extractedInterests: interestsWithArtifacts,
         rawInput: content,
         source: source as "meeting" | "call" | "email" | "voice_note",
         createdAt: new Date().toISOString(),
@@ -282,11 +360,12 @@ The RM will see:
  */
 function createFinalizeProposalTool(customer: CustomerWithNotes) {
   return tool(
-    async ({ proposalId, extractionData, answers, rawInput, source }) => {
+    async ({ proposalId, extractionData, extractedInterests, answers, rawInput, source }) => {
       console.log("[ProfileAgent] finalize_proposal called");
 
       // Parse extraction data
       const extraction: Extraction = extractionData;
+      const interests: ExtractedInterest[] = extractedInterests || [];
 
       // Process answers through extraction LLM to map to fields
       const processedAnswers: Array<{
@@ -420,7 +499,48 @@ Be intelligent about parsing:
 
       console.log("[ProfileAgent] Final proposal - fields:", fieldUpdates.length);
 
-      return JSON.stringify(proposal);
+      // Persist field updates as artifacts
+      if (fieldUpdates.length > 0) {
+        const artifactInputs: CreateProfileEditInput[] = fieldUpdates.map((fu) => ({
+          customerId: customer.id,
+          batchId: proposalId,
+          createdByType: CREATOR_TYPES.AGENT,
+          payload: {
+            field_key: fu.field,
+            field_display_name: fu.label,
+            proposed_value: fu.proposedValue,
+            previous_value: fu.currentValue,
+            source_text: fu.source,
+            confidence: fu.confidence,
+          },
+        }));
+
+        try {
+          const artifacts = await artifactRepository.createProfileEditBatch(artifactInputs);
+          console.log("[ProfileAgent] Created artifacts:", artifacts.length);
+
+          // Map artifact IDs back to field updates for tracking
+          for (let i = 0; i < fieldUpdates.length; i++) {
+            (fieldUpdates[i] as ProposedFieldUpdate & { artifactId?: string }).artifactId = artifacts[i].id;
+          }
+        } catch (error) {
+          console.error("[ProfileAgent] Failed to create artifacts:", error);
+          // Continue without artifacts - don't block the proposal
+        }
+      }
+
+      // Interest artifacts are already created in extract_and_generate_nudges
+      // Just pass through any interests that were provided (they already have artifactIds)
+      const interestProposals: Array<ExtractedInterest & { artifactId?: string }> = interests;
+      console.log("[ProfileAgent] Interest proposals from Phase 1:", interestProposals.length);
+
+      // Add interest proposals to the response
+      const proposalWithInterests = {
+        ...proposal,
+        interestProposals,
+      };
+
+      return JSON.stringify(proposalWithInterests);
     },
     {
       name: FINALIZE_PROPOSAL_TOOL_NAME,
@@ -451,6 +571,15 @@ Call this tool after the RM has reviewed the follow-up questions.`,
           noteSummary: z.string(),
           noteTags: z.array(z.string()),
         }).describe("The extraction data from Phase 1"),
+        extractedInterests: z.array(z.object({
+          id: z.string(),
+          category: z.enum(["personal", "financial"]),
+          label: z.string(),
+          description: z.string().optional(),
+          sourceText: z.string(),
+          confidence: z.enum(["high", "medium", "low"]),
+          artifactId: z.string().optional(),
+        })).optional().describe("Extracted interests from Phase 1 (already persisted as artifacts)"),
         answers: z.array(
           z.object({
             questionId: z.string(),

@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   Phone,
   Mail,
@@ -8,13 +11,22 @@ import {
   Wallet,
   Clock,
   TrendingUp,
+  Heart,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/lib/crm/types";
+import type { CustomerInterest } from "@/db/interest-schema";
 import {
   calculateCompleteness,
   getCompletenessBgColor,
 } from "@/lib/crm/completeness";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ProfileHeroProps {
   customer: Customer;
@@ -23,6 +35,24 @@ interface ProfileHeroProps {
 export function ProfileHero({ customer }: ProfileHeroProps) {
   const completeness = calculateCompleteness(customer);
   const today = new Date();
+  const [interests, setInterests] = useState<CustomerInterest[]>([]);
+
+  useEffect(() => {
+    async function fetchInterests() {
+      try {
+        const response = await fetch(
+          `/api/customers/${customer.id}/interests?status=active&limit=6`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setInterests(data.interests || []);
+        }
+      } catch (e) {
+        console.error("Failed to fetch interests:", e);
+      }
+    }
+    fetchInterests();
+  }, [customer.id]);
 
   // Calculate follow-up status
   const followUpDate = customer.nextFollowUpDate
@@ -187,7 +217,20 @@ export function ProfileHero({ customer }: ProfileHeroProps) {
         )}
       </div>
 
-      {/* Row 3: RM Actions & Completeness */}
+      {/* Row 3: Interests */}
+      {interests.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground mr-1">Interests:</span>
+          {interests.map((interest) => (
+            <InterestChip key={interest.id} interest={interest} />
+          ))}
+          {interests.length >= 6 && (
+            <span className="text-xs text-muted-foreground">+more</span>
+          )}
+        </div>
+      )}
+
+      {/* Row 4: RM Actions & Completeness */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-6">
           {/* Next Follow-up */}
@@ -325,4 +368,47 @@ function getBufferBadgeColor(status: string): string {
     return "bg-red-500/15 text-red-600 dark:text-red-400";
   }
   return "bg-muted text-muted-foreground";
+}
+
+interface InterestChipProps {
+  interest: CustomerInterest;
+}
+
+function InterestChip({ interest }: InterestChipProps) {
+  const isPersonal = interest.category === "personal";
+  const Icon = isPersonal ? Heart : Briefcase;
+
+  const chip = (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border",
+        isPersonal
+          ? "border-pink-500/30 bg-pink-50/50 dark:bg-pink-950/20"
+          : "border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20"
+      )}
+    >
+      <Icon
+        className={cn(
+          "size-3",
+          isPersonal ? "text-pink-500" : "text-blue-500"
+        )}
+      />
+      {interest.label}
+    </span>
+  );
+
+  if (interest.description) {
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>{chip}</TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <p className="text-sm">{interest.description}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return chip;
 }

@@ -5,6 +5,8 @@ import { PrepCard } from "../overview/prep-card";
 import { NeedsAttentionCard } from "../overview/needs-attention-card";
 import { CompletionCard } from "../overview/completion-card";
 import { RecentActivityCard } from "../overview/recent-activity-card";
+import { PendingProposalsCard } from "../overview/pending-proposals-card";
+import { InterestsCard } from "../overview/interests-card";
 
 interface OverviewModeProps {
   customer: CustomerWithNotes;
@@ -19,11 +21,17 @@ export function OverviewMode({ customer }: OverviewModeProps) {
         <NeedsAttentionCard customer={customer} />
       </div>
 
-      {/* Bottom row: Completion + Recent Activity */}
+      {/* Middle row: Pending Proposals + Completion */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <PendingProposalsCard customerId={customer.id} />
         <CompletionCard customer={customer} />
-        <RecentActivityCard customer={customer} />
       </div>
+
+      {/* Interests row */}
+      <InterestsCard customerId={customer.id} />
+
+      {/* Bottom row: Recent Activity */}
+      <RecentActivityCard customer={customer} />
     </div>
   );
 }

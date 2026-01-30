@@ -18,6 +18,8 @@ export interface ProposedFieldUpdate {
   confidence: "high" | "medium" | "low";
   /** Quote from the input that led to this extraction */
   source: string;
+  /** ID of the persisted artifact (added after creation) */
+  artifactId?: string;
 }
 
 export interface ProposedNote {
