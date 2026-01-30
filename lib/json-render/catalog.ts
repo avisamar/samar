@@ -53,6 +53,15 @@ export const componentSchemas = {
     category: z.string().optional(),
   }),
 
+  InterestProposalCard: z.object({
+    interestId: z.string(),
+    category: z.enum(["personal", "financial"]),
+    label: z.string(),
+    description: z.string().optional(),
+    sourceText: z.string(),
+    confidence: z.enum(["high", "medium", "low"]),
+  }),
+
   NoteProposalCard: z.object({
     noteId: z.string(),
     content: z.string(),
@@ -134,6 +143,21 @@ export const actionSchemas = {
   editAdditionalData: z.object({
     dataId: z.string(),
     value: z.unknown(),
+  }),
+
+  // Interest actions
+  acceptInterest: z.object({
+    interestId: z.string(),
+  }),
+
+  rejectInterest: z.object({
+    interestId: z.string(),
+  }),
+
+  editInterest: z.object({
+    interestId: z.string(),
+    label: z.string().optional(),
+    description: z.string().optional(),
   }),
 
   // Note actions

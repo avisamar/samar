@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { interestRepository, crmRepository } from "@/lib/crm";
 import type { ListInterestsOptions, InterestCategory } from "@/lib/crm";
 import { INTEREST_STATUSES, INTEREST_CATEGORIES } from "@/lib/crm";
+import { getRequestUserId } from "@/lib/auth-server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -96,7 +97,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await request.json();
 
     // Validate required fields
-    const { category, label, description, rmId } = body;
+    const { category, label, description, rmId: rmIdFromBody } = body;
+    const rmId = (typeof rmIdFromBody === "string" ? rmIdFromBody : null) ?? (await getRequestUserId(request));
 
     if (!category || !label) {
       return NextResponse.json(
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Create the interest
     const interest = await interestRepository.createManual({
       customerId,
-      rmId: rmId || "system", // TODO: Get from auth context
+      rmId: rmId ?? undefined,
       category,
       label,
       description,

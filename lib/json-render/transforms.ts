@@ -94,6 +94,20 @@ export function transformProposalToTree(proposal: ProfileUpdateProposal): JsonTr
     },
   }));
 
+  // Build interest proposal elements
+  const interestElements: JsonElement[] = (proposal.interestProposals || []).map((interest) => ({
+    type: "InterestProposalCard" as const,
+    key: `interest-${interest.id}`,
+    props: {
+      interestId: interest.id,
+      category: interest.category,
+      label: interest.label,
+      description: interest.description,
+      sourceText: interest.sourceText,
+      confidence: interest.confidence,
+    },
+  }));
+
   // Build note element
   const noteElement: JsonElement = {
     type: "NoteProposalCard",
@@ -110,6 +124,11 @@ export function transformProposalToTree(proposal: ProfileUpdateProposal): JsonTr
   const children: JsonElement[] = [
     ...confidenceGroups,
   ];
+
+  // Add interest section if present
+  if (interestElements.length > 0) {
+    children.push(...interestElements);
+  }
 
   // Add additional data section if present
   if (additionalDataElements.length > 0) {
@@ -179,6 +198,13 @@ export function extractFieldIds(proposal: ProfileUpdateProposal): string[] {
  */
 export function extractAdditionalDataIds(proposal: ProfileUpdateProposal): string[] {
   return (proposal.additionalData || []).map((d) => d.id);
+}
+
+/**
+ * Extract all interest IDs from a proposal for state initialization.
+ */
+export function extractInterestIds(proposal: ProfileUpdateProposal): string[] {
+  return (proposal.interestProposals || []).map((i) => i.id);
 }
 
 /**

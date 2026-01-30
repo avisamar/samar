@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { FileEdit, Loader2, CheckCircle, ChevronRight } from "lucide-react";
+import { FileEdit, Loader2, CheckCircle } from "lucide-react";
 import type { Artifact } from "@/db/artifact-schema";
 import type { ProfileEditPayload } from "@/lib/crm/artifact-types";
+import { ARTIFACT_TYPES } from "@/lib/crm/artifact-types";
 import {
   Card,
   CardHeader,
@@ -193,10 +194,17 @@ interface ProposalGroupProps {
 }
 
 function ProposalGroup({ group, onReview }: ProposalGroupProps) {
-  const fieldCount = group.artifacts.length;
-  const fieldNames = group.artifacts
+  const fieldArtifacts = group.artifacts.filter((a) => a.artifactType === ARTIFACT_TYPES.PROFILE_EDIT);
+  const interestArtifacts = group.artifacts.filter((a) => a.artifactType === ARTIFACT_TYPES.INTEREST_PROPOSAL);
+
+  const fieldCount = fieldArtifacts.length;
+  const interestCount = interestArtifacts.length;
+  const totalCount = group.artifacts.length;
+
+  const fieldNames = fieldArtifacts
     .slice(0, 3)
     .map((a) => (a.payload as ProfileEditPayload).field_display_name)
+    .filter(Boolean)
     .join(", ");
   const moreCount = fieldCount > 3 ? fieldCount - 3 : 0;
 
@@ -211,11 +219,12 @@ function ProposalGroup({ group, onReview }: ProposalGroupProps) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium">
-          {fieldCount} field{fieldCount > 1 ? "s" : ""} to review
+          {totalCount} item{totalCount > 1 ? "s" : ""} to review
         </p>
         <p className="text-xs text-muted-foreground truncate">
-          {fieldNames}
-          {moreCount > 0 && ` +${moreCount} more`}
+          {fieldNames || "Includes interest proposals"}
+          {moreCount > 0 && ` +${moreCount} more fields`}
+          {interestCount > 0 && ` • ${interestCount} interest${interestCount > 1 ? "s" : ""}`}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">{timeAgo}</p>
       </div>

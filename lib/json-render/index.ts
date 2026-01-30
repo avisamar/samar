@@ -14,6 +14,7 @@ export {
   transformNudgesToTree,
   extractFieldIds,
   extractAdditionalDataIds,
+  extractInterestIds,
   extractNudgeIds,
   getNudgeFieldKeyMap,
 } from "./transforms";

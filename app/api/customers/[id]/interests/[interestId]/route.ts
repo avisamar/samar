@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { interestRepository, crmRepository } from "@/lib/crm";
+import { getRequestUserId } from "@/lib/auth-server";
 
 interface RouteContext {
   params: Promise<{ id: string; interestId: string }>;
@@ -79,7 +80,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { label, description, rmId } = body;
+    const { label, description, rmId: rmIdFromBody } = body as {
+      label?: unknown;
+      description?: unknown;
+      rmId?: unknown;
+    };
+    const rmId =
+      (typeof rmIdFromBody === "string" ? rmIdFromBody : null) ??
+      (await getRequestUserId(request));
 
     // Validate at least one field to update
     if (label === undefined && description === undefined) {
@@ -92,7 +100,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const interest = await interestRepository.update(
       interestId,
       { label, description },
-      rmId || "system" // TODO: Get from auth context
+      rmId ?? undefined
     );
 
     if (!interest) {
@@ -138,11 +146,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Get rmId from query params or body
+    // Prefer explicit rmId query param; fall back to authenticated user
     const { searchParams } = new URL(request.url);
-    const rmId = searchParams.get("rmId") || "system"; // TODO: Get from auth context
+    const rmIdFromQuery = searchParams.get("rmId");
+    const rmId =
+      (typeof rmIdFromQuery === "string" ? rmIdFromQuery : null) ??
+      (await getRequestUserId(request));
 
-    const interest = await interestRepository.archive(interestId, rmId);
+    const interest = await interestRepository.archive(interestId, rmId ?? undefined);
 
     if (!interest) {
       return NextResponse.json(

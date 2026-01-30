@@ -24,6 +24,8 @@ import {
   Database,
   HelpCircle,
   Plus,
+  Heart,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -49,9 +51,17 @@ interface NudgeState {
   skipped: boolean;
 }
 
+interface InterestState {
+  status: "pending" | "accepted" | "rejected";
+  editedLabel?: string;
+  editedDescription?: string;
+  isEditing?: boolean;
+}
+
 interface ProfileAgentState {
   fieldStates: Record<string, FieldState>;
   additionalDataStates: Record<string, FieldState>;
+  interestStates: Record<string, InterestState>;
   noteState: FieldState;
   nudgeStates: Record<string, NudgeState>;
   isApplying: boolean;
@@ -73,6 +83,9 @@ type StateAction =
   | { type: "SET_FIELD_EDITING"; fieldId: string; isEditing: boolean }
   | { type: "SET_ADDITIONAL_DATA_STATUS"; dataId: string; status: "accepted" | "rejected" }
   | { type: "SET_ADDITIONAL_DATA_EDIT"; dataId: string; value: unknown }
+  | { type: "SET_INTEREST_STATUS"; interestId: string; status: "accepted" | "rejected" }
+  | { type: "SET_INTEREST_EDIT"; interestId: string; label?: string; description?: string }
+  | { type: "SET_INTEREST_EDITING"; interestId: string; isEditing: boolean }
   | { type: "SET_NOTE_STATUS"; status: "accepted" | "rejected" }
   | { type: "SET_NOTE_EDIT"; content: string }
   | { type: "SET_NOTE_EDITING"; isEditing: boolean }
@@ -102,6 +115,7 @@ interface ProfileAgentProviderProps {
   children: React.ReactNode;
   initialFieldIds?: string[];
   initialAdditionalDataIds?: string[];
+  initialInterestIds?: string[];
   initialNudgeIds?: string[];
   initialSubmitted?: boolean;
   onApply?: (data: {
@@ -109,9 +123,11 @@ interface ProfileAgentProviderProps {
     customerId: string;
     approvedFieldIds: string[];
     approvedAdditionalDataIds: string[];
+    approvedInterestIds: string[];
     approvedNote: boolean;
     editedValues: Record<string, unknown>;
     editedAdditionalData: Record<string, unknown>;
+    editedInterests: Record<string, { label?: string; description?: string }>;
     editedNoteContent?: string;
   }) => Promise<void>;
   onFinalize?: (answers: Array<{ questionId: string; fieldKey: string; answer: string | null; skipped: boolean }>) => void;
@@ -121,6 +137,7 @@ export function ProfileAgentProvider({
   children,
   initialFieldIds = [],
   initialAdditionalDataIds = [],
+  initialInterestIds = [],
   initialNudgeIds = [],
   initialSubmitted = false,
   onApply,
@@ -132,6 +149,9 @@ export function ProfileAgentProvider({
     ),
     additionalDataStates: Object.fromEntries(
       initialAdditionalDataIds.map((id) => [id, { status: "pending" as const }])
+    ),
+    interestStates: Object.fromEntries(
+      initialInterestIds.map((id) => [id, { status: "pending" as const }])
     ),
     noteState: { status: "pending" },
     nudgeStates: Object.fromEntries(
@@ -202,6 +222,43 @@ export function ProfileAgentProvider({
                 ...prev.additionalDataStates[action.dataId],
                 editedValue: action.value,
                 status: "accepted",
+              },
+            },
+          };
+        case "SET_INTEREST_STATUS":
+          return {
+            ...prev,
+            interestStates: {
+              ...prev.interestStates,
+              [action.interestId]: {
+                ...prev.interestStates[action.interestId],
+                status: action.status,
+              },
+            },
+          };
+        case "SET_INTEREST_EDIT":
+          return {
+            ...prev,
+            interestStates: {
+              ...prev.interestStates,
+              [action.interestId]: {
+                ...prev.interestStates[action.interestId],
+                editedLabel: action.label ?? prev.interestStates[action.interestId]?.editedLabel,
+                editedDescription:
+                  action.description ?? prev.interestStates[action.interestId]?.editedDescription,
+                status: "accepted",
+                isEditing: false,
+              },
+            },
+          };
+        case "SET_INTEREST_EDITING":
+          return {
+            ...prev,
+            interestStates: {
+              ...prev.interestStates,
+              [action.interestId]: {
+                ...prev.interestStates[action.interestId],
+                isEditing: action.isEditing,
               },
             },
           };
@@ -278,6 +335,20 @@ export function ProfileAgentProvider({
         case "editAdditionalData":
           dispatch({ type: "SET_ADDITIONAL_DATA_EDIT", dataId: params.dataId as string, value: params.value });
           break;
+        case "acceptInterest":
+          dispatch({ type: "SET_INTEREST_STATUS", interestId: params.interestId as string, status: "accepted" });
+          break;
+        case "rejectInterest":
+          dispatch({ type: "SET_INTEREST_STATUS", interestId: params.interestId as string, status: "rejected" });
+          break;
+        case "editInterest":
+          dispatch({
+            type: "SET_INTEREST_EDIT",
+            interestId: params.interestId as string,
+            label: params.label as string | undefined,
+            description: params.description as string | undefined,
+          });
+          break;
         case "acceptNote":
           dispatch({ type: "SET_NOTE_STATUS", status: "accepted" });
           break;
@@ -304,6 +375,9 @@ export function ProfileAgentProvider({
               const approvedAdditionalDataIds = Object.entries(state.additionalDataStates)
                 .filter(([, s]) => s.status === "accepted")
                 .map(([id]) => id);
+              const approvedInterestIds = Object.entries(state.interestStates)
+                .filter(([, s]) => s.status === "accepted")
+                .map(([id]) => id);
               const editedValues = Object.fromEntries(
                 Object.entries(state.fieldStates)
                   .filter(([, s]) => s.editedValue !== undefined)
@@ -314,14 +388,21 @@ export function ProfileAgentProvider({
                   .filter(([, s]) => s.editedValue !== undefined)
                   .map(([id, s]) => [id, s.editedValue])
               );
+              const editedInterests = Object.fromEntries(
+                Object.entries(state.interestStates)
+                  .filter(([, s]) => s.editedLabel !== undefined || s.editedDescription !== undefined)
+                  .map(([id, s]) => [id, { label: s.editedLabel, description: s.editedDescription }])
+              );
               await onApply({
                 proposalId: params.proposalId as string,
                 customerId: params.customerId as string,
                 approvedFieldIds,
                 approvedAdditionalDataIds,
+                approvedInterestIds,
                 approvedNote: state.noteState.status === "accepted",
                 editedValues,
                 editedAdditionalData,
+                editedInterests,
                 editedNoteContent: state.noteState.editedValue as string | undefined,
               });
               dispatch({ type: "SET_APPLIED" });
@@ -375,7 +456,12 @@ export function ProposalCardComponent({
   const rejectedCount = Object.values(state.fieldStates).filter((s) => s.status === "rejected").length;
   const pendingCount = Object.values(state.fieldStates).filter((s) => s.status === "pending").length;
   const additionalAcceptedCount = Object.values(state.additionalDataStates).filter((s) => s.status === "accepted").length;
-  const hasAccepted = acceptedCount > 0 || additionalAcceptedCount > 0 || state.noteState.status === "accepted";
+  const interestsAcceptedCount = Object.values(state.interestStates).filter((s) => s.status === "accepted").length;
+  const hasAccepted =
+    acceptedCount > 0 ||
+    additionalAcceptedCount > 0 ||
+    interestsAcceptedCount > 0 ||
+    state.noteState.status === "accepted";
 
   if (state.applied) {
     return (
@@ -393,6 +479,8 @@ export function ProposalCardComponent({
               {acceptedCount > 0 && `${acceptedCount} field${acceptedCount !== 1 ? "s" : ""} updated`}
               {acceptedCount > 0 && additionalAcceptedCount > 0 && ", "}
               {additionalAcceptedCount > 0 && `${additionalAcceptedCount} additional data item${additionalAcceptedCount !== 1 ? "s" : ""} added`}
+              {(acceptedCount > 0 || additionalAcceptedCount > 0) && interestsAcceptedCount > 0 && ", "}
+              {interestsAcceptedCount > 0 && `${interestsAcceptedCount} interest${interestsAcceptedCount !== 1 ? "s" : ""} confirmed`}
               {(acceptedCount > 0 || additionalAcceptedCount > 0) && state.noteState.status === "accepted" && ", "}
               {state.noteState.status === "accepted" && "note added"}
             </p>
@@ -1236,6 +1324,229 @@ export function AdditionalDataSectionComponent({
         These data points don&apos;t match standard profile fields but may be valuable.
       </p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Interests section header.
+ * (We render the items themselves in the tree; this component just provides the header copy.)
+ */
+export function InterestsSectionComponent({
+  children,
+  interests,
+}: {
+  children?: React.ReactNode;
+  interests: Array<Record<string, unknown>>;
+}) {
+  const personalCount = interests.filter((i) => i.category === "personal").length;
+  const financialCount = interests.filter((i) => i.category === "financial").length;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 pt-2 border-t">
+        <Heart className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">Interests</span>
+        <Badge variant="outline" className="text-xs text-muted-foreground">
+          {interests.length} item{interests.length !== 1 ? "s" : ""}
+        </Badge>
+        <div className="ml-auto flex gap-1">
+          {personalCount > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              Personal: {personalCount}
+            </Badge>
+          )}
+          {financialCount > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              Financial: {financialCount}
+            </Badge>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Suggested from notes. Confirm to add to the profile (only confirmed interests show up on the profile).
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Interest proposal card component.
+ */
+export function InterestProposalCardComponent({
+  props,
+}: {
+  props: ComponentProps<"InterestProposalCard">;
+}) {
+  const { state, dispatch, onAction } = useProfileAgentContext();
+  const interestState = state.interestStates[props.interestId] || { status: "pending" };
+
+  const [labelInput, setLabelInput] = useState(
+    String(interestState.editedLabel ?? props.label)
+  );
+  const [descriptionInput, setDescriptionInput] = useState(
+    String(interestState.editedDescription ?? props.description ?? "")
+  );
+
+  const displayLabel = interestState.editedLabel ?? props.label;
+  const displayDescription =
+    interestState.editedDescription !== undefined ? interestState.editedDescription : props.description;
+
+  const Icon = props.category === "personal" ? Heart : Briefcase;
+
+  const confidenceColor = {
+    high: "text-green-600 border-green-200 bg-green-50 dark:bg-green-900/20",
+    medium: "text-yellow-600 border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20",
+    low: "text-red-600 border-red-200 bg-red-50 dark:bg-red-900/20",
+  };
+
+  const handleSaveEdit = () => {
+    onAction("editInterest", {
+      interestId: props.interestId,
+      label: labelInput.trim() || undefined,
+      description: descriptionInput.trim() || undefined,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setLabelInput(String(interestState.editedLabel ?? props.label));
+    setDescriptionInput(String(interestState.editedDescription ?? props.description ?? ""));
+    dispatch({ type: "SET_INTEREST_EDITING", interestId: props.interestId, isEditing: false });
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3 transition-colors",
+        interestState.status === "accepted" && "border-green-200 bg-green-50/50 dark:bg-green-900/10",
+        interestState.status === "rejected" && "border-red-200 bg-red-50/50 dark:bg-red-900/10 opacity-60",
+        interestState.status === "pending" && "border-border"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon className="size-4 text-muted-foreground" />
+          <span className="font-medium text-sm truncate">{String(displayLabel)}</span>
+          <Badge variant="outline" className={cn("text-xs", confidenceColor[props.confidence])}>
+            {props.confidence}
+          </Badge>
+          <Badge variant="outline" className="text-xs text-muted-foreground">
+            {props.category}
+          </Badge>
+        </div>
+        {interestState.status !== "pending" && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-xs",
+              interestState.status === "accepted" && "text-green-600 border-green-200",
+              interestState.status === "rejected" && "text-red-600 border-red-200"
+            )}
+          >
+            {interestState.status}
+          </Badge>
+        )}
+      </div>
+
+      {interestState.isEditing ? (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Label</p>
+            <Input
+              value={labelInput}
+              onChange={(e) => setLabelInput(e.target.value)}
+              className="h-8 text-sm"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Description (optional)</p>
+            <Textarea
+              value={descriptionInput}
+              onChange={(e) => setDescriptionInput(e.target.value)}
+              className="min-h-[70px] text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleSaveEdit} className="h-7">
+              <Check className="size-3 mr-1" />
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {displayDescription && (
+            <p className="text-sm text-foreground mb-2 whitespace-pre-wrap">{String(displayDescription)}</p>
+          )}
+          {props.sourceText && (
+            <p className="text-xs text-muted-foreground italic mb-2 line-clamp-2">
+              &ldquo;{props.sourceText}&rdquo;
+            </p>
+          )}
+        </>
+      )}
+
+      {interestState.status === "pending" && !interestState.isEditing && (
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onAction("acceptInterest", { interestId: props.interestId })}
+            className="h-7 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-900/20"
+          >
+            <Check className="size-3 mr-1" />
+            Confirm
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onAction("rejectInterest", { interestId: props.interestId })}
+            className="h-7 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <X className="size-3 mr-1" />
+            Dismiss
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => dispatch({ type: "SET_INTEREST_EDITING", interestId: props.interestId, isEditing: true })}
+            className="h-7"
+          >
+            <Pencil className="size-3 mr-1" />
+            Edit
+          </Button>
+        </div>
+      )}
+
+      {interestState.status !== "pending" && !interestState.isEditing && (
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              onAction(interestState.status === "accepted" ? "rejectInterest" : "acceptInterest", {
+                interestId: props.interestId,
+              })
+            }
+            className="h-7 text-muted-foreground"
+          >
+            {interestState.status === "accepted" ? "Dismiss instead" : "Confirm instead"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => dispatch({ type: "SET_INTEREST_EDITING", interestId: props.interestId, isEditing: true })}
+            className="h-7 text-muted-foreground"
+          >
+            <Pencil className="size-3 mr-1" />
+            Edit
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

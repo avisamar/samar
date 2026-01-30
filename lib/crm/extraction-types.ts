@@ -3,6 +3,8 @@
  * Used by the profile agent to propose updates from meeting notes.
  */
 
+import type { ExtractedInterest } from "./interest-types";
+
 export interface ProposedFieldUpdate {
   /** Unique identifier for this field update */
   id: string;
@@ -60,6 +62,12 @@ export interface ProfileUpdateProposal {
   fieldUpdates: ProposedFieldUpdate[];
   /** List of proposed additional data (non-schema) */
   additionalData: ProposedAdditionalData[];
+  /**
+   * Optional list of proposed interests extracted from notes.
+   * These are persisted as "interest_proposal" artifacts and must be RM-confirmed
+   * before they appear in the confirmed interests list.
+   */
+  interestProposals?: Array<ExtractedInterest & { artifactId?: string }>;
   /** Proposed note to attach */
   note: ProposedNote;
   /** Original raw input from the RM */

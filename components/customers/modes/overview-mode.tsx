@@ -15,17 +15,19 @@ interface OverviewModeProps {
 export function OverviewMode({ customer }: OverviewModeProps) {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-5xl mx-auto">
+      {/* Middle row: Pending Proposals + Completion */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        
+        <CompletionCard customer={customer} />
+        <PendingProposalsCard customerId={customer.id} />
+      </div>
+
       {/* Top row: Prep + Needs Attention */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <PrepCard customer={customer} />
         <NeedsAttentionCard customer={customer} />
       </div>
 
-      {/* Middle row: Pending Proposals + Completion */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <PendingProposalsCard customerId={customer.id} />
-        <CompletionCard customer={customer} />
-      </div>
 
       {/* Interests row */}
       <InterestsCard customerId={customer.id} />

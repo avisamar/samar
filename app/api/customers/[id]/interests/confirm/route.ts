@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { interestRepository, crmRepository, artifactRepository } from "@/lib/crm";
 import { PROFILE_EDIT_STATUSES, ARTIFACT_TYPES } from "@/lib/crm";
+import { getRequestUserId } from "@/lib/auth-server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,7 +22,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { id: customerId } = await context.params;
     const body = await request.json();
 
-    const { artifactId, rmId, label, description } = body;
+    const { artifactId, rmId: rmIdFromBody, label, description } = body;
+    const rmId = (typeof rmIdFromBody === "string" ? rmIdFromBody : null) ?? (await getRequestUserId(request));
 
     // Validate required fields
     if (!artifactId) {
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Create the confirmed interest from the artifact
     const interest = await interestRepository.createFromArtifact(
       artifactId,
-      rmId || "system", // TODO: Get from auth context
+      rmId ?? undefined,
       { label, description }
     );
 

@@ -124,7 +124,7 @@ export const interestRepository = {
     // Create the interest
     const newInterest: NewCustomerInterest = {
       customerId: artifactRecord.customerId,
-      createdByRmId: rmId,
+      createdByRmId: rmId || undefined,
       category: payload.category,
       label: edits?.label || payload.edited_label || payload.label,
       description: edits?.description || payload.edited_description || payload.description,
@@ -143,7 +143,7 @@ export const interestRepository = {
     // Create audit record
     await this.createAuditRecord(interest.id, {
       action: INTEREST_AUDIT_ACTIONS.CONFIRMED,
-      actorId: rmId,
+      actorId: rmId || undefined,
       actorType: INTEREST_ACTOR_TYPES.RM,
       newState: interest,
     });
@@ -158,7 +158,7 @@ export const interestRepository = {
   async createManual(input: CreateManualInterestInput): Promise<CustomerInterest> {
     const newInterest: NewCustomerInterest = {
       customerId: input.customerId,
-      createdByRmId: input.rmId,
+      createdByRmId: input.rmId || undefined,
       category: input.category,
       label: input.label,
       description: input.description,
@@ -174,7 +174,7 @@ export const interestRepository = {
     // Create audit record
     await this.createAuditRecord(interest.id, {
       action: INTEREST_AUDIT_ACTIONS.CREATED,
-      actorId: input.rmId,
+      actorId: input.rmId || undefined,
       actorType: INTEREST_ACTOR_TYPES.RM,
       newState: interest,
     });

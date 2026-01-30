@@ -25,7 +25,7 @@ export function NewClient({ customerName }: NewClientProps) {
         Welcome, {customerName || "New Customer"}!
       </h3>
       <p className="text-sm text-muted-foreground max-w-sm mb-6">
-        Start building this customer's profile by adding notes from your
+        Start building this customer&apos;s profile by adding notes from your
         conversations. The AI will help extract and organize key information.
       </p>
       <Button onClick={navigateToCapture} className="gap-2">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { crmRepository, interestRepository } from "@/lib/crm";
 import { artifactRepository } from "@/lib/crm/artifact-repository";
 import { PROFILE_EDIT_STATUSES } from "@/lib/crm/artifact-types";
+import { getRequestUserId } from "@/lib/auth-server";
 import type {
   ProfileUpdateProposal,
   ApplyUpdatesRequest,
@@ -37,6 +38,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id: customerId } = await context.params;
     const body: RequestBody = await request.json();
+
+    const rmId =
+      (typeof body.rmId === "string" ? body.rmId : null) ??
+      (await getRequestUserId(request)) ??
+      undefined;
 
     console.log("[ApplyUpdates] Received request for customer:", customerId);
     console.log("[ApplyUpdates] Body:", JSON.stringify(body, null, 2));
@@ -184,7 +190,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           // Create confirmed interest from artifact
           const interest = await interestRepository.createFromArtifact(
             interestProposal.artifactId,
-            body.rmId || "system", // TODO: Get from auth context
+            rmId,
             edits
           );
 

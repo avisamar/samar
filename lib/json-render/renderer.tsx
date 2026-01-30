@@ -13,10 +13,12 @@ import {
   ConfidenceGroupComponent,
   FieldUpdateCardComponent,
   AdditionalDataCardComponent,
+  InterestProposalCardComponent,
   NoteProposalCardComponent,
   NudgeQuestionCardComponent,
   ProgressIndicatorComponent,
   AdditionalDataSectionComponent,
+  InterestsSectionComponent,
 } from "./components";
 
 /**
@@ -31,6 +33,7 @@ const componentRegistry: Record<
   ConfidenceGroup: ConfidenceGroupComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
   FieldUpdateCard: FieldUpdateCardComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
   AdditionalDataCard: AdditionalDataCardComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
+  InterestProposalCard: InterestProposalCardComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
   NoteProposalCard: NoteProposalCardComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
   NudgeQuestionCard: NudgeQuestionCardComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
   ProgressIndicator: ProgressIndicatorComponent as React.ComponentType<{ props: Record<string, unknown>; children?: React.ReactNode }>,
@@ -98,12 +101,15 @@ export function ProposalRenderer({ tree }: RendererProps) {
 
   // Separate children into groups
   const confidenceGroups: JsonElement[] = [];
+  const interestItems: JsonElement[] = [];
   const additionalDataItems: JsonElement[] = [];
   let noteElement: JsonElement | null = null;
 
   for (const child of root.children) {
     if (child.type === "ConfidenceGroup") {
       confidenceGroups.push(child);
+    } else if (child.type === "InterestProposalCard") {
+      interestItems.push(child);
     } else if (child.type === "AdditionalDataCard") {
       additionalDataItems.push(child);
     } else if (child.type === "NoteProposalCard") {
@@ -120,6 +126,15 @@ export function ProposalRenderer({ tree }: RendererProps) {
       {confidenceGroups.map((group) => (
         <React.Fragment key={group.key}>{renderElement(group)}</React.Fragment>
       ))}
+
+      {/* Interests section */}
+      {interestItems.length > 0 && (
+        <InterestsSectionComponent interests={interestItems.map((i) => i.props as Record<string, unknown>)}>
+          {interestItems.map((item) => (
+            <React.Fragment key={item.key}>{renderElement(item)}</React.Fragment>
+          ))}
+        </InterestsSectionComponent>
+      )}
 
       {/* Additional data section */}
       {additionalDataItems.length > 0 && (

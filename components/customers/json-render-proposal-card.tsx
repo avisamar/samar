@@ -13,6 +13,7 @@ import {
   transformProposalToTree,
   extractFieldIds,
   extractAdditionalDataIds,
+  extractInterestIds,
   ProposalRenderer,
 } from "@/lib/json-render";
 
@@ -34,6 +35,7 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
   // Extract IDs for state initialization
   const fieldIds = useMemo(() => extractFieldIds(proposal), [proposal]);
   const additionalDataIds = useMemo(() => extractAdditionalDataIds(proposal), [proposal]);
+  const interestIds = useMemo(() => extractInterestIds(proposal), [proposal]);
 
   // Handle apply updates
   const handleApply = useCallback(
@@ -42,9 +44,11 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
       customerId: string;
       approvedFieldIds: string[];
       approvedAdditionalDataIds: string[];
+      approvedInterestIds: string[];
       approvedNote: boolean;
       editedValues: Record<string, unknown>;
       editedAdditionalData: Record<string, unknown>;
+      editedInterests: Record<string, { label?: string; description?: string }>;
       editedNoteContent?: string;
     }) => {
       const response = await fetch(`/api/customers/${customerId}/apply-updates`, {
@@ -54,9 +58,11 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
           proposalId: data.proposalId,
           approvedFieldIds: data.approvedFieldIds,
           approvedAdditionalDataIds: data.approvedAdditionalDataIds,
+          approvedInterestIds: data.approvedInterestIds,
           approvedNote: data.approvedNote,
           editedValues: Object.keys(data.editedValues).length > 0 ? data.editedValues : undefined,
           editedAdditionalData: Object.keys(data.editedAdditionalData).length > 0 ? data.editedAdditionalData : undefined,
+          editedInterests: Object.keys(data.editedInterests).length > 0 ? data.editedInterests : undefined,
           editedNoteContent: data.editedNoteContent,
           proposal,
         }),
@@ -83,6 +89,7 @@ export function ProposalCard({ proposal, customerId, onApplied }: ProposalCardPr
     <ProfileAgentProvider
       initialFieldIds={fieldIds}
       initialAdditionalDataIds={additionalDataIds}
+      initialInterestIds={interestIds}
       onApply={handleApply}
     >
       <ProposalRenderer tree={tree} />

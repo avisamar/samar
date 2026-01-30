@@ -3,7 +3,8 @@
 import { useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Artifact } from "@/db/artifact-schema";
-import type { ProfileEditPayload } from "@/lib/crm/artifact-types";
+import type { ProfileEditPayload, InterestProposalPayload } from "@/lib/crm/artifact-types";
+import { ARTIFACT_TYPES } from "@/lib/crm/artifact-types";
 import type { ProfileUpdateProposal, ProposedFieldUpdate } from "@/lib/crm/extraction-types";
 import {
   Dialog,
@@ -16,6 +17,7 @@ import {
   ProfileAgentProvider,
   transformProposalToTree,
   extractFieldIds,
+  extractInterestIds,
   ProposalRenderer,
 } from "@/lib/json-render";
 
@@ -37,7 +39,10 @@ function reconstructProposalFromArtifacts(
   artifacts: Artifact[],
   customerId: string
 ): ProfileUpdateProposal {
-  const fieldUpdates: ProposedFieldUpdate[] = artifacts.map((artifact) => {
+  const profileArtifacts = artifacts.filter((a) => a.artifactType === ARTIFACT_TYPES.PROFILE_EDIT);
+  const interestArtifacts = artifacts.filter((a) => a.artifactType === ARTIFACT_TYPES.INTEREST_PROPOSAL);
+
+  const fieldUpdates: ProposedFieldUpdate[] = profileArtifacts.map((artifact) => {
     const payload = artifact.payload as ProfileEditPayload;
     return {
       id: artifact.id, // Use artifact ID as the field update ID for tracking
@@ -54,11 +59,25 @@ function reconstructProposalFromArtifacts(
   // Sort by field label for consistent display
   fieldUpdates.sort((a, b) => a.label.localeCompare(b.label));
 
+  const interestProposals = interestArtifacts.map((artifact) => {
+    const payload = artifact.payload as InterestProposalPayload;
+    return {
+      id: artifact.id,
+      category: payload.category,
+      label: payload.edited_label || payload.label,
+      description: payload.edited_description || payload.description,
+      sourceText: payload.source_text,
+      confidence: payload.confidence || "medium",
+      artifactId: artifact.id,
+    };
+  });
+
   return {
     proposalId: batchId,
     customerId,
     fieldUpdates,
     additionalData: [], // Additional data is not persisted as artifacts
+    interestProposals,
     note: {
       id: `note-${batchId}`,
       content: "", // Note content not available from artifacts
@@ -95,6 +114,7 @@ export function ProposalReviewDialog({
 
   // Extract IDs for state initialization
   const fieldIds = useMemo(() => extractFieldIds(proposal), [proposal]);
+  const interestIds = useMemo(() => extractInterestIds(proposal), [proposal]);
 
   // Handle apply updates
   const handleApply = useCallback(
@@ -103,9 +123,11 @@ export function ProposalReviewDialog({
       customerId: string;
       approvedFieldIds: string[];
       approvedAdditionalDataIds: string[];
+      approvedInterestIds: string[];
       approvedNote: boolean;
       editedValues: Record<string, unknown>;
       editedAdditionalData: Record<string, unknown>;
+      editedInterests: Record<string, { label?: string; description?: string }>;
       editedNoteContent?: string;
     }) => {
       const response = await fetch(`/api/customers/${customerId}/apply-updates`, {
@@ -115,9 +137,11 @@ export function ProposalReviewDialog({
           proposalId: data.proposalId,
           approvedFieldIds: data.approvedFieldIds,
           approvedAdditionalDataIds: data.approvedAdditionalDataIds,
+          approvedInterestIds: data.approvedInterestIds,
           approvedNote: false, // No note from artifact-based proposals
           editedValues: Object.keys(data.editedValues).length > 0 ? data.editedValues : undefined,
           editedAdditionalData: Object.keys(data.editedAdditionalData).length > 0 ? data.editedAdditionalData : undefined,
+          editedInterests: Object.keys(data.editedInterests).length > 0 ? data.editedInterests : undefined,
           editedNoteContent: data.editedNoteContent,
           proposal,
         }),
@@ -153,6 +177,7 @@ export function ProposalReviewDialog({
           <ProfileAgentProvider
             initialFieldIds={fieldIds}
             initialAdditionalDataIds={[]}
+            initialInterestIds={interestIds}
             onApply={handleApply}
           >
             <ProposalRenderer tree={tree} />
