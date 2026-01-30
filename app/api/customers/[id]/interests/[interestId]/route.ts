@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { label, description, rmId: rmIdFromBody } = body as {
+    const { label: rawLabel, description: rawDescription, rmId: rmIdFromBody } = body as {
       label?: unknown;
       description?: unknown;
       rmId?: unknown;
@@ -88,6 +88,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const rmId =
       (typeof rmIdFromBody === "string" ? rmIdFromBody : null) ??
       (await getRequestUserId(request));
+
+    // Validate and coerce types
+    const label = typeof rawLabel === "string" ? rawLabel : undefined;
+    const description = typeof rawDescription === "string" ? rawDescription : undefined;
 
     // Validate at least one field to update
     if (label === undefined && description === undefined) {
@@ -97,10 +101,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (!rmId) {
+      return NextResponse.json(
+        { error: "RM ID is required to update interests" },
+        { status: 400 }
+      );
+    }
+
     const interest = await interestRepository.update(
       interestId,
       { label, description },
-      rmId ?? undefined
+      rmId
     );
 
     if (!interest) {
@@ -153,7 +164,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       (typeof rmIdFromQuery === "string" ? rmIdFromQuery : null) ??
       (await getRequestUserId(request));
 
-    const interest = await interestRepository.archive(interestId, rmId ?? undefined);
+    if (!rmId) {
+      return NextResponse.json(
+        { error: "RM ID is required to archive interests" },
+        { status: 400 }
+      );
+    }
+
+    const interest = await interestRepository.archive(interestId, rmId);
 
     if (!interest) {
       return NextResponse.json(

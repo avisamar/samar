@@ -75,10 +75,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (!rmId) {
+      return NextResponse.json(
+        { error: "RM ID is required to confirm interests" },
+        { status: 400 }
+      );
+    }
+
     // Create the confirmed interest from the artifact
     const interest = await interestRepository.createFromArtifact(
       artifactId,
-      rmId ?? undefined,
+      rmId,
       { label, description }
     );
 

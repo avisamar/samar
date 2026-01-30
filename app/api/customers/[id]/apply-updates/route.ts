@@ -171,6 +171,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Apply approved interest proposals
     const interestProposals = proposal.interestProposals || [];
     if (approvedInterestIds.length > 0 && interestProposals.length > 0) {
+      if (!rmId) {
+        errors.push("Cannot confirm interests without RM ID");
+      } else {
       for (const interestId of approvedInterestIds) {
         const interestProposal = interestProposals.find((i) => i.id === interestId);
         if (!interestProposal) {
@@ -208,6 +211,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         } catch (e) {
           errors.push(`Failed to confirm interest ${interestProposal.label}: ${e instanceof Error ? e.message : "Unknown error"}`);
         }
+      }
       }
 
       // Reject non-approved interest proposals

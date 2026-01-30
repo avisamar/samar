@@ -125,10 +125,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    if (!rmId) {
+      return NextResponse.json(
+        { error: "RM ID is required to create interests" },
+        { status: 400 }
+      );
+    }
+
     // Create the interest
     const interest = await interestRepository.createManual({
       customerId,
-      rmId: rmId ?? undefined,
+      rmId,
       category,
       label,
       description,
