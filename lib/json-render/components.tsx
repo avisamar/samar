@@ -26,6 +26,7 @@ import {
   Plus,
   Heart,
   Briefcase,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -529,7 +530,14 @@ export function ProposalCardComponent({
             onClick={() => onAction("applyUpdates", { proposalId: props.proposalId, customerId: props.customerId })}
             disabled={!hasAccepted || state.isApplying}
           >
-            {state.isApplying ? "Applying..." : "Apply Changes"}
+            {state.isApplying ? (
+              <>
+                <Loader2 className="size-4 mr-1.5 animate-spin" />
+                Applying...
+              </>
+            ) : (
+              "Apply Changes"
+            )}
           </Button>
         </CardFooter>
         {state.error && (
